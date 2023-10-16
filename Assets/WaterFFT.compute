@@ -1,8 +1,80 @@
-#pragma kernel CSMain
+// https://www.keithlantz.net/2011/10/ocean-simulation-part-one-using-the-discrete-fourier-transform/
 
+#pragma kernel CS_ComputeHeightField
 
-[numthreads(8,8,1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+#define PI 3.14159265358979323846264338
+#define G 9.81f
+#define G_SQRT 3.13209195267f
+
+int _N;
+float _L;
+
+// Phillips parameters
+float2 _w; // Wind dir
+float _V; // Wind speed
+float _A; // I still don't know what this param does
+float _t;
+
+RWTexture2D<float> _result;
+
+float2 conj(float2 v)
 {
-    
+    return float2(v.x, -v.y);
+}
+
+float2 K(int n_prime, int m_prime)
+{
+    return float2((2*PI*n_prime-PI*_N)/_L, (2*PI*m_prime-PI*_N)/_L);
+}
+
+float dispersion(float n_prime, float m_prime)
+{
+    return G_SQRT * sqrt(length(K(n_prime, m_prime)));
+}
+
+float phillips(int n_prime, int m_prime)
+{
+    const float l = (_V*_V)/G;
+
+    const float2 k = K(n_prime, m_prime);
+    const float k_length = length(k);
+    const float k_length2 = k_length * k_length;
+    const float k_length4 = k_length2* k_length2;
+
+    const float dot_prod = dot(_w, k);
+    const float frac_top = exp(-1.0f/(k_length2*l*l));
+    const float frac_bot = (k_length*k_length*k_length*k_length);
+
+    return _A*(frac_top/frac_bot)*dot_prod*dot_prod;
+}
+
+float2 h_tilde0(float n_prime, float m_prime)
+{
+    const float2 k = K(n_prime, m_prime);
+
+    const float one_over_sqrt2 = 0.70710678118f;
+
+    return one_over_sqrt2*float2(0.0f, 0.0f)*sqrt(phillips(n_prime, m_prime));
+}
+
+float2 h_tilde(float n_prime, float m_prime, float t)
+{
+    const float2 ht0 = h_tilde0(n_prime, m_prime);
+    const float2 ht0conj = conj(h_tilde0(-n_prime, -m_prime));
+
+    const float omegat = dispersion(n_prime, m_prime) * t;
+
+    const float c = cos(omegat);
+    const float s = sin(omegat);
+
+    const float2 c0 = float2(c, s);
+    const float2 c1 = float2(c, -s);
+
+    return ht0 * c0 + ht0conj * c1;
+}
+
+[numthreads(1,1,1)]
+void CS_ComputeHeightField(uint3 id : SV_DispatchThreadID)
+{
+
 }
