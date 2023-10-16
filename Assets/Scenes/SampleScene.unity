@@ -157,8 +157,9 @@ MonoBehaviour:
   waterFFT: {fileID: 7200000, guid: 10d8e657d6515e74dacbf6e673e216dd, type: 3}
   waterShader: {fileID: -6465566751694194690, guid: a9318a3fd93eb5d4badbb247d37b4c4e,
     type: 3}
-  size: 1000
+  size: 100
   gridSize: 100
+  seed: 1851062701
   _w: {x: 1, y: 0}
   _V: 10
   _A: 1

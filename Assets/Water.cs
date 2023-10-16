@@ -8,28 +8,35 @@ public class Water : MonoBehaviour
 {
     public ComputeShader waterFFT;
     public Shader waterShader;
-    
+
     [Header("Plane body parameter")] [Range(0f, 2000f)]
-    public float size = 1000f;
+    public float size = 100f;
 
-    [Range(0, 2048)] public int gridSize = 128;
+    [Range(0, 2048)] public int gridSize = 100;
 
-    int _N { get { return gridSize; } }
-    float _L { get { return size; } }
+    public int seed = 0;
+    
+    private int N
+    {
+        get { return gridSize; }
+    }
 
-    [Header("Phillips parameters")]
-    [Tooltip("Wind direction")]
+    private float L
+    {
+        get { return size; }
+    }
+
+    [Header("Phillips parameters")] [Tooltip("Wind direction")]
     public Vector2 _w;
-    [Tooltip("Wind speed")]
-    public float _V; // Wind speed
-    [Tooltip("Phillips parameter")]
-    public float _A;
+
+    [Tooltip("Wind speed")] public float _V; // Wind speed
+    [Tooltip("Phillips parameter")] public float _A;
 
     private RenderTexture _result;
     private Material _waterMaterial;
-    
+
     private ComputeBuffer _debug_phillipsResults;
-    
+
     public void GenerateGrid()
     {
         Mesh m = new Mesh();
@@ -79,7 +86,6 @@ public class Water : MonoBehaviour
 
     void GenerateSpectrumTextures()
     {
-        
     }
 
     // Start is called before the first frame update
@@ -89,13 +95,12 @@ public class Water : MonoBehaviour
         GenerateGrid();
         SetShaderParameter();
         SetComputeParameters();
-        waterFFT.Dispatch(0 , gridSize, gridSize, 1);
     }
 
     void CreateResources()
     {
         _result = new RenderTexture(gridSize, gridSize, 0, RenderTextureFormat.RFloat, RenderTextureReadWrite.Linear);
-        _result.filterMode = FilterMode.Bilinear;   
+        _result.filterMode = FilterMode.Bilinear;
         _result.wrapMode = TextureWrapMode.Repeat;
         _result.enableRandomWrite = true;
         _result.autoGenerateMips = false;
@@ -106,18 +111,18 @@ public class Water : MonoBehaviour
 
     void CreateDebugResources()
     {
-        
     }
-    
+
     void SetComputeParameters()
     {
-        waterFFT.SetInt("_N", _N);
-        waterFFT.SetFloat("_L", _L);
+        waterFFT.SetInt("_N", N);
+        waterFFT.SetFloat("_L", L);
         waterFFT.SetVector("_w", _w);
         waterFFT.SetFloat("_V", _V);
         waterFFT.SetFloat("_A", _A);
-        waterFFT.SetFloat("_t", Time.deltaTime);
-        waterFFT.SetFloat("_dt", Time.time);
+        waterFFT.SetFloat("_t", Time.time);
+        waterFFT.SetFloat("_dt", Time.deltaTime);
+        waterFFT.SetFloat("_Seed", seed);
         waterFFT.SetTexture(0, "_result", _result);
     }
 
@@ -129,7 +134,7 @@ public class Water : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        // SetComputeParameters();
-        // waterFFT.Dispatch(0 , gridSize, gridSize, 1);
+        SetComputeParameters();
+        waterFFT.Dispatch(0, gridSize, gridSize, 1);
     }
 }

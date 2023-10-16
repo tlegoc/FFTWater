@@ -15,76 +15,34 @@ float _V; // Wind speed
 float _A; // I still don't know what this param does
 float _dt; // Delta time
 float _t; // Time
+int _Seed;
 
 RWTexture2D<float> _result;
 
 //
-//  DEBUG
 //
-
-//
-//
-//
-// RANDOM GAUSSIAN VALUE FROM https://www.shadertoy.com/view/MlVSzw
-#define  NUM_BUCKETS 32
-#define ITER_PER_BUCKET 1024
-#define  HIST_SCALE 8.0
-
-#define NUM_BUCKETS_F float(NUM_BUCKETS)
-#define ITER_PER_BUCKET_F float(ITER_PER_BUCKET)
-
-//note: uniformly distributed, normalized rand, [0;1[
-float nrand( float2 n )
-{
-    return sin(dot(n.xy, float2(12.9898, 78.233)))* 43758.5453%1.0f;
-}
-//note: remaps v to [0;1] in interval [a;b]
-float remap( float a, float b, float v )
-{
-    return clamp( (v-a) / (b-a), 0.0, 1.0 );
-}
-//note: quantizes in l levels
-float _trunc( float a, float l )
-{
-    return floor(a*l)/l;
+// https://github.com/GarrettGunnell/Water/blob/main/Assets/Shaders/FFTWater.compute
+float hash(uint n) {
+    // integer hash copied from Hugo Elias
+    n = (n << 13U) ^ n;
+    n = n * (n * n * 15731U + 0x789221U) + 0x1376312589U;
+    return float(n & uint(0x7fffffffU)) / float(0x7fffffff);
 }
 
-float n8rand( float2 n )
-{
-    float t = _dt % 1.0f;
-    float nrnd0 = nrand( n + 0.07*t );
-    float nrnd1 = nrand( n + 0.11*t );	
-    float nrnd2 = nrand( n + 0.13*t );
-    float nrnd3 = nrand( n + 0.17*t );
-    float nrnd4 = nrand( n + 0.19*t );
-    float nrnd5 = nrand( n + 0.23*t );
-    float nrnd6 = nrand( n + 0.29*t );
-    float nrnd7 = nrand( n + 0.31*t );
-    
-    return (nrnd0+nrnd1+nrnd2+nrnd3 +nrnd4+nrnd5+nrnd6+nrnd7) / 8.0;
-}
+float2 UniformToGaussian(float u1, float u2) {
+    float R = sqrt(-2.0f * log(u1));
+    float theta = 2.0f * PI * u2;
 
-#define ALPHA 0.14
-#define INV_ALPHA 1.0 / ALPHA
-#define K_RAND 2.0 / (PI * ALPHA)
-
-float inv_error_function(float x)
-{
-    float y = log(1.0 - x*x);
-    float z = K_RAND + 0.5 * y;
-    return sqrt(sqrt(z*z - y * INV_ALPHA) - z) * sign(x);
-}
-
-float gaussian_rand( float2 n )
-{
-    float t = _dt % 1.0f;
-    float x = n8rand( n + 0.07*t );
-    
-    return inv_error_function(x*2.0-1.0)*0.15 + 0.5;
+    return float2(R * cos(theta), R * sin(theta));
 }
 //
 //
 //
+
+float2 complexMul(float2 a, float2 b)
+{
+    return float2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+}
 
 float2 conj(float2 v)
 {
@@ -118,14 +76,15 @@ float phillips(int n_prime, int m_prime)
 
 float2 h_tilde0(float n_prime, float m_prime)
 {
+    uint seed = n_prime + _N * m_prime + _N + _Seed;
     const float2 k = K(n_prime, m_prime);
 
     const float one_over_sqrt2 = 0.70710678118f;
-
-    float e1 = gaussian_rand(k);
-    float e2 = gaussian_rand(normalize(k*e1));
     
-    return one_over_sqrt2*float2(e1, e2)*sqrt(phillips(n_prime, m_prime));
+    float4 uniformRandSamples = float4(hash(seed), hash(seed * 2), hash(seed * 3), hash(seed * 4));
+    float2 e = UniformToGaussian(uniformRandSamples.x, uniformRandSamples.y);
+    
+    return one_over_sqrt2*e*sqrt(phillips(n_prime, m_prime));
 }
 
 float2 h_tilde(float n_prime, float m_prime, float t)
@@ -147,5 +106,9 @@ float2 h_tilde(float n_prime, float m_prime, float t)
 [numthreads(1,1,1)]
 void CS_ComputeHeightField(uint3 id : SV_DispatchThreadID)
 {
-
+    uint seed = id.x + _N * id.y + _N;
+    seed += _Seed;
+    float2 uniformRandSamples = float2(hash(seed), hash(seed * 2));
+    _result[id.xy] = UniformToGaussian(uniformRandSamples.x, uniformRandSamples.y).x;
+    
 }
