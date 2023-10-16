@@ -2,7 +2,7 @@
 
 #pragma kernel CS_ComputeHeightField
 
-#define PI 3.14159265358979323846264338
+#define PI 3.14159265358979323846264338f
 #define G 9.81f
 #define G_SQRT 3.13209195267f
 
@@ -13,9 +13,78 @@ float _L;
 float2 _w; // Wind dir
 float _V; // Wind speed
 float _A; // I still don't know what this param does
-float _t;
+float _dt; // Delta time
+float _t; // Time
 
 RWTexture2D<float> _result;
+
+//
+//  DEBUG
+//
+
+//
+//
+//
+// RANDOM GAUSSIAN VALUE FROM https://www.shadertoy.com/view/MlVSzw
+#define  NUM_BUCKETS 32
+#define ITER_PER_BUCKET 1024
+#define  HIST_SCALE 8.0
+
+#define NUM_BUCKETS_F float(NUM_BUCKETS)
+#define ITER_PER_BUCKET_F float(ITER_PER_BUCKET)
+
+//note: uniformly distributed, normalized rand, [0;1[
+float nrand( float2 n )
+{
+    return sin(dot(n.xy, float2(12.9898, 78.233)))* 43758.5453%1.0f;
+}
+//note: remaps v to [0;1] in interval [a;b]
+float remap( float a, float b, float v )
+{
+    return clamp( (v-a) / (b-a), 0.0, 1.0 );
+}
+//note: quantizes in l levels
+float _trunc( float a, float l )
+{
+    return floor(a*l)/l;
+}
+
+float n8rand( float2 n )
+{
+    float t = _dt % 1.0f;
+    float nrnd0 = nrand( n + 0.07*t );
+    float nrnd1 = nrand( n + 0.11*t );	
+    float nrnd2 = nrand( n + 0.13*t );
+    float nrnd3 = nrand( n + 0.17*t );
+    float nrnd4 = nrand( n + 0.19*t );
+    float nrnd5 = nrand( n + 0.23*t );
+    float nrnd6 = nrand( n + 0.29*t );
+    float nrnd7 = nrand( n + 0.31*t );
+    
+    return (nrnd0+nrnd1+nrnd2+nrnd3 +nrnd4+nrnd5+nrnd6+nrnd7) / 8.0;
+}
+
+#define ALPHA 0.14
+#define INV_ALPHA 1.0 / ALPHA
+#define K_RAND 2.0 / (PI * ALPHA)
+
+float inv_error_function(float x)
+{
+    float y = log(1.0 - x*x);
+    float z = K_RAND + 0.5 * y;
+    return sqrt(sqrt(z*z - y * INV_ALPHA) - z) * sign(x);
+}
+
+float gaussian_rand( float2 n )
+{
+    float t = _dt % 1.0f;
+    float x = n8rand( n + 0.07*t );
+    
+    return inv_error_function(x*2.0-1.0)*0.15 + 0.5;
+}
+//
+//
+//
 
 float2 conj(float2 v)
 {
@@ -43,9 +112,8 @@ float phillips(int n_prime, int m_prime)
 
     const float dot_prod = dot(_w, k);
     const float frac_top = exp(-1.0f/(k_length2*l*l));
-    const float frac_bot = (k_length*k_length*k_length*k_length);
 
-    return _A*(frac_top/frac_bot)*dot_prod*dot_prod;
+    return _A*(frac_top/k_length4)*dot_prod*dot_prod;
 }
 
 float2 h_tilde0(float n_prime, float m_prime)
@@ -54,7 +122,10 @@ float2 h_tilde0(float n_prime, float m_prime)
 
     const float one_over_sqrt2 = 0.70710678118f;
 
-    return one_over_sqrt2*float2(0.0f, 0.0f)*sqrt(phillips(n_prime, m_prime));
+    float e1 = gaussian_rand(k);
+    float e2 = gaussian_rand(normalize(k*e1));
+    
+    return one_over_sqrt2*float2(e1, e2)*sqrt(phillips(n_prime, m_prime));
 }
 
 float2 h_tilde(float n_prime, float m_prime, float t)

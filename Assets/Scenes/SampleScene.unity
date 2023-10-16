@@ -154,8 +154,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e14ad2d331869f243879c6dd85864c6c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  waterFFT: {fileID: 7200000, guid: 10d8e657d6515e74dacbf6e673e216dd, type: 3}
+  waterShader: {fileID: -6465566751694194690, guid: a9318a3fd93eb5d4badbb247d37b4c4e,
+    type: 3}
   size: 1000
   gridSize: 100
+  _w: {x: 1, y: 0}
+  _V: 10
+  _A: 1
 --- !u!23 &180298023
 MeshRenderer:
   m_ObjectHideFlags: 0
