@@ -157,6 +157,7 @@ MonoBehaviour:
   waterFFT: {fileID: 7200000, guid: 10d8e657d6515e74dacbf6e673e216dd, type: 3}
   waterShader: {fileID: -6465566751694194690, guid: a9318a3fd93eb5d4badbb247d37b4c4e,
     type: 3}
+  _debug: 1
   size: 100
   gridSize: 100
   seed: 1851062701
@@ -313,14 +314,14 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalRotation: {x: 0.1552316, y: -0, z: -0, w: 0.98787814}
+  m_LocalPosition: {x: 0, y: 3.83, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 17.86, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
