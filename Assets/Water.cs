@@ -33,7 +33,7 @@ public class Water : MonoBehaviour
     [Tooltip("Wind speed")] public float _V; // Wind speed
     [Tooltip("Phillips parameter")] public float _A;
 
-    private RenderTexture _h0Spectrum, _Spectrum, _Heightmap;
+    private RenderTexture _h0Spectrum, _Spectrum, _Heightmap, _htildeDisplacement, _htildeSlope;
     private Material _waterMaterial;
 
     public void GenerateGrid()
@@ -95,11 +95,23 @@ public class Water : MonoBehaviour
         if (_debug)
             SaveTexture(_h0Spectrum, "h0Spectrum");
 
+        
         if (_debug)
         {
             SetComputeParameters(1);
             waterFFT.Dispatch(1, gridSize, gridSize, 1);
-            SaveTexture(_Spectrum, "spectrum");
+            SaveTexture(_Spectrum, "spectrumPREDFT");
+            // First DFT
+            SetComputeParameters(2);
+            waterFFT.Dispatch(2, gridSize, gridSize, 1);
+            // Transfer
+            SetComputeParameters(3);
+            waterFFT.Dispatch(3, gridSize, gridSize, 1);
+            SaveTexture(_Spectrum, "spectrumPOSTDFT");
+            //Second DFT
+            SetComputeParameters(4);
+            waterFFT.Dispatch(4, gridSize, gridSize, 1);
+            SaveTexture(_Heightmap, "heightmap");
         }
     }
 
@@ -125,7 +137,7 @@ public class Water : MonoBehaviour
         _Spectrum.anisoLevel = 16;
         _Spectrum.Create();
         
-        _Heightmap = new RenderTexture(gridSize, gridSize, 0, RenderTextureFormat.RFloat,
+        _Heightmap = new RenderTexture(gridSize, gridSize, 0, RenderTextureFormat.RHalf,
             RenderTextureReadWrite.Linear);
         _Heightmap.filterMode = FilterMode.Bilinear;
         _Heightmap.wrapMode = TextureWrapMode.Repeat;
@@ -134,6 +146,26 @@ public class Water : MonoBehaviour
         _Heightmap.enableRandomWrite = true;
         _Heightmap.anisoLevel = 16;
         _Heightmap.Create();
+        
+        _htildeDisplacement = new RenderTexture(gridSize, gridSize, 0, RenderTextureFormat.RGHalf,
+            RenderTextureReadWrite.Linear);
+        _htildeDisplacement.filterMode = FilterMode.Bilinear;
+        _htildeDisplacement.wrapMode = TextureWrapMode.Repeat;
+        _htildeDisplacement.enableRandomWrite = true;
+        _htildeDisplacement.autoGenerateMips = false;
+        _htildeDisplacement.enableRandomWrite = true;
+        _htildeDisplacement.anisoLevel = 16;
+        _htildeDisplacement.Create();
+        
+        _htildeSlope = new RenderTexture(gridSize, gridSize, 0, RenderTextureFormat.ARGBFloat,
+            RenderTextureReadWrite.Linear);
+        _htildeSlope.filterMode = FilterMode.Bilinear;
+        _htildeSlope.wrapMode = TextureWrapMode.Repeat;
+        _htildeSlope.enableRandomWrite = true;
+        _htildeSlope.autoGenerateMips = false;
+        _htildeSlope.enableRandomWrite = true;
+        _htildeSlope.anisoLevel = 16;
+        _htildeSlope.Create();
     }
 
     void CreateDebugResources()
@@ -155,6 +187,8 @@ public class Water : MonoBehaviour
         waterFFT.SetTexture(kernel, "_h0spectrum", _h0Spectrum);
         waterFFT.SetTexture(kernel, "_Spectrum", _Spectrum);
         waterFFT.SetTexture(kernel, "_Heightmap", _Heightmap);
+        waterFFT.SetTexture(kernel, "_htildeDisplacement", _htildeDisplacement);
+        waterFFT.SetTexture(kernel, "_htildeSlope", _htildeSlope);
     }
 
     void SetShaderParameter()
@@ -165,9 +199,7 @@ public class Water : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        SetComputeParameters(1);
-        waterFFT.Dispatch(1, gridSize, gridSize, 1);
-        SetComputeParameters(2);
+        
     }
 
     // Used for debugging

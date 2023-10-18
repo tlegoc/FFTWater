@@ -2,8 +2,11 @@
 
 #pragma kernel CS_Computeh0Spectrum
 #pragma kernel CS_Computehtilde
+#pragma kernel CS_DFTUp
+#pragma kernel CS_DFT_Transfer
+#pragma kernel CS_DFTLeft
 
-#define PI 3.14159265358979323846264338f
+#define PI 3.1415926535897932384626433f
 #define G 9.81f
 #define G_SQRT 3.13209195267f
 
@@ -23,6 +26,8 @@ float3 _offsets; // CPU random offsets
 RWTexture2D<float4> _h0spectrum; // h0 - h0conj
 RWTexture2D<float4> _Spectrum; // Spectrum updated each frame
 RWTexture2D<float1> _Heightmap; // Spectrum updated each frame
+RWTexture2D<float2> _htildeDisplacement;
+RWTexture2D<float4> _htildeSlope;
 
 //
 //
@@ -91,6 +96,11 @@ float2 K(float n_prime, float m_prime)
     return float2((2 * PI * n_prime - PI * _N) / _L, (2 * PI * m_prime - PI * _N) / _L);
 }
 
+float2 NMPrimeFromK(float2 k)
+{
+    return float2((k.x * _L + PI * _N) / (2 * PI), (k.y * _L + PI * _N) / (2 * PI));
+}
+
 float2 XZ(float n_prime, float m_prime)
 {
     return float2((n_prime-_N/2.0f)*_L/_N, (m_prime-_N/2.0f)*_L/_N);
@@ -156,4 +166,47 @@ void CS_Computeh0Spectrum(uint3 id : SV_DispatchThreadID)
 void CS_Computehtilde(uint3 id : SV_DispatchThreadID)
 {
     _Spectrum[id.xy] = float4(h_tilde((float)id.x, (float)id.y, _t, _h0spectrum[id.xy].xy, _h0spectrum[id.xy].zw), 0, 0);
+
+    const float2 k = K(id.x, id.y);
+    const float2 xz = XZ(id.x, id.y);
+
+    _htildeDisplacement[id.xy] = k/length(k)*complexMul(float2(0, -1), complexMul(_Spectrum[id.xy], complex(dot(k, xz))));
+}
+
+[numthreads(1,1,1)]
+void CS_DFTUp(uint3 id : SV_DispatchThreadID)
+{
+    float h = 0.0f;
+    const float2 xz = XZ(id.x, id.y);
+    _Heightmap[id.xy] = length(xz);
+    
+    for (int n_prime = 0; n_prime < _N; n_prime++)
+    {
+        float angle = xz.x*(2*PI*n_prime-PI*_N)/_L + xz.y*(2*PI*id.y-PI*_N)/_L;
+
+        h += length(complexMul(_Spectrum[float2(n_prime, id.y)], complex(angle)));
+    }
+    
+    _Heightmap[id.xy] = h;
+}
+
+[numthreads(1, 1, 1)]
+void CS_DFT_Transfer(uint3 id : SV_DispatchThreadID)
+{
+    _Spectrum[id.xy] = _Heightmap[id.xy];
+}
+
+[numthreads(1,1,1)]
+void CS_DFTLeft(uint3 id : SV_DispatchThreadID)
+{
+    float h = 0.0f;
+    const float2 xz = XZ(id.x, id.y);
+    for (int m_prime = 0; m_prime < _N; m_prime++)
+    {
+        float angle = xz.x*(2*PI*id.x-PI*_N)/_L + xz.y*(2*PI*m_prime-PI*_N)/_L;
+
+        h += length(complexMul(_Spectrum[float2(id.x, m_prime)], complex(angle)));
+    }
+    
+    _Heightmap[id.xy] = h;
 }
