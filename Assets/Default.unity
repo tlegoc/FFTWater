@@ -384,10 +384,10 @@ MonoBehaviour:
     type: 3}
   _debug: 1
   size: 128
-  gridSize: 128
+  gridSizePowerOfTwo: 7
   seed: 0
   _w: {x: 1, y: 0}
-  _V: 10
+  _V: 100
   _A: 1
 --- !u!33 &1661805942
 MeshFilter:
