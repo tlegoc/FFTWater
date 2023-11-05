@@ -24,8 +24,10 @@ float3 _offsets; // CPU random offsets
 // RWTexture2D<float> _result;
 RWTexture2D<float4> _h0spectrum; // h0, h0conj
 RWTexture2D<float2> _Spectrum; // Spectrum updated each frame
+RWTexture2D<float4> _PostHorizontalDFT; // Transition texture between horizontal and vertical DFTs
 RWTexture2D<float1> _Heightmap; // Output heightmap
-RWTexture2D<float4> _PostHorizontalDFT;
+
+// I forgot why they're here
 RWTexture2D<float4> _htildeDisplacement;
 RWTexture2D<float4> _htildeSlope;
 
