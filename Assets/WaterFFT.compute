@@ -1,8 +1,244 @@
-#pragma kernel CSMain
+// https://www.keithlantz.net/2011/10/ocean-simulation-part-one-using-the-discrete-fourier-transform/
 
+#pragma kernel CS_Computeh0Spectrum
+#pragma kernel CS_Computehtilde
+#pragma kernel CS_HorizontalDFT
+#pragma kernel CS_VerticalDFT
 
-[numthreads(8,8,1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+#define PI 3.1415926535897932384626433f
+#define G 9.81f
+#define G_SQRT 3.13209195267f
+
+int _N;
+float _L;
+
+// Phillips parameters
+float2 _w; // Wind dir
+float _V; // Wind speed
+float _A; // I still don't know what this param does
+float _dt; // Delta time
+float _t; // Time
+int _Seed;
+float3 _offsets; // CPU random offsets
+
+// RWTexture2D<float> _result;
+RWTexture2D<float4> _h0spectrum; // h0 - h0conj
+RWTexture2D<float4> _Spectrum; // Spectrum updated each frame
+RWTexture2D<float4> _Heightmap;
+RWTexture2D<float4> _PostHorizontalDFT;
+RWTexture2D<float4> _htildeDisplacement;
+RWTexture2D<float4> _htildeSlope;
+
+//
+//
+// https://github.com/thomas-moulard/gazebo-deb/blob/master/media/materials/programs/camera_noise_gaussian_fs.glsl
+float rand(float2 co)
 {
-    
+    // This one-liner can be found in many places, including:
+    // http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
+    // I can't find any explanation for it, but experimentally it does seem to
+    // produce approximately uniformly distributed values in the interval [0,1].
+    float r = (sin(dot(co.xy, float2(12.9898, 78.233))) * 43758.5453) % 1.0f;
+
+    // Make sure that we don't return 0.0
+    if (r == 0.0)
+        return 0.000000000001;
+    else
+        return r;
 }
+
+float gaussrand(float2 co)
+{
+    // Box-Muller method for sampling from the normal distribution
+    // http://en.wikipedia.org/wiki/Normal_distribution#Generating_values_from_normal_distribution
+    // This method requires 2 uniform random inputs and produces 2 
+    // Gaussian random outputs.  We'll take a 3rd random variable and use it to
+    // switch between the two outputs.
+
+    float U, V, R, Z;
+    // Add in the CPU-supplied random offsets to generate the 3 random values that
+    // we'll use.
+    U = rand(co + float2(_offsets.x, _offsets.x));
+    V = rand(co + float2(_offsets.y, _offsets.y));
+    R = rand(co + float2(_offsets.z, _offsets.z));
+    // Switch between the two random outputs.
+    if (R < 0.5)
+        Z = sqrt(-2.0 * log(U)) * sin(2.0 * PI * V);
+    else
+        Z = sqrt(-2.0 * log(U)) * cos(2.0 * PI * V);
+
+    // Apply the stddev and mean.
+    // Z = Z * 1;
+
+    return Z;
+}
+//
+//
+//
+
+/*
+ *
+ * COORDINATES id.xy
+ *
+ * id.y
+ * ^
+ * |
+ * |
+ * |
+ * |
+ * O----> id.x
+ *
+ */
+
+
+float2 complex(float theta)
+{
+    return float2(cos(theta), sin(theta));
+}
+
+float2 complexMul(float2 a, float2 b)
+{
+    return float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+float2 conj(float2 v)
+{
+    return float2(v.x, -v.y);
+}
+
+float2 K(float n_prime, float m_prime)
+{
+    return float2((2 * PI * n_prime - PI * float(_N)) / _L, (2 * PI * m_prime - PI * float(_N)) / _L);
+}
+
+float2 NMPrimeFromK(float2 k)
+{
+    return float2((k.x * _L + PI * float(_N)) / (2 * PI), (k.y * _L + PI * float(_N)) / (2 * PI));
+}
+
+float2 XZ(const float n_prime, const float m_prime)
+{
+    return float2((n_prime-float(_N)/2.0f)*_L/float(_N), (m_prime-float(_N)/2.0f)*_L/float(_N));
+}
+
+float dispersion(const float n_prime, const float m_prime)
+{
+    return G_SQRT * sqrt(length(K(n_prime, m_prime)));
+}
+
+float dispersion(float2 k)
+{
+    return G_SQRT * sqrt(length(k));
+}
+
+float dispersion(float k)
+{
+    return G_SQRT * sqrt(k);
+}
+
+float phillips(int n_prime, int m_prime)
+{
+    const float l = (_V * _V) / G;
+
+    const float2 k = K(n_prime, m_prime);
+    const float k_length = length(k);
+    const float k_length2 = k_length * k_length;
+    const float k_length4 = k_length2 * k_length2;
+
+    const float dot_prod = dot(_w, k);
+    const float frac_top = exp(-1.0f / (k_length2 * l * l));
+
+    return _A * (frac_top / k_length4) * dot_prod * dot_prod;
+}
+
+// Initial spectrum generation
+float2 h_tilde0(float n_prime, float m_prime)
+{
+    const float one_over_sqrt2 = 0.70710678118f;
+
+    float e1 = gaussrand(float2(abs(n_prime), abs(m_prime)));
+    float e2 = gaussrand(float2(abs(n_prime + e1), abs(m_prime + e1)));
+
+    // No need for complexMul, the only complex here is e so we just
+    // multiply each component by the same value.
+    return one_over_sqrt2 * float2(e1, e2) * sqrt(phillips(n_prime, m_prime));
+}
+
+bool IsNaN(float x)
+{
+    return !(x < 0.0f || x > 0.0f || x == 0.0f);
+}
+
+// What actually makes the wave spectrum move.
+float2 h_tilde(float n_prime, float m_prime, float t, float2 ht0, float2 ht0conj)
+{
+    const float omegat = dispersion(n_prime, m_prime) * t;
+
+    const float c = cos(omegat);
+    const float s = sin(omegat);
+
+    const float2 c0 = float2(c, s);
+    const float2 c1 = float2(c, -s);
+
+    float2 res = complexMul(ht0, c0) + complexMul(ht0conj, c1);
+    if (IsNaN(res.x)) res.x = 0.0f;
+    if (IsNaN(res.y)) res.y = 0.0f;
+
+    return res;
+}
+
+[numthreads(1,1,1)]
+void CS_Computeh0Spectrum(uint3 id : SV_DispatchThreadID)
+{
+    const float2 ht0 = h_tilde0((float)id.x, (float)id.y);
+    const float2 ht0conj = conj(h_tilde0(-((float)id.x), -((float)id.y)));
+
+    _h0spectrum[id.xy] = float4(ht0, ht0conj);
+}
+
+[numthreads(1,1,1)]
+void CS_Computehtilde(uint3 id : SV_DispatchThreadID)
+{
+    float2 ht = h_tilde((float)id.x, (float)id.y, _t, _h0spectrum[id.xy].rg, _h0spectrum[id.xy].ba);
+    const float2 k = K(id.x, id.y);
+    const float2 xz = XZ(id.x, id.y);
+    float2 htd = k/length(k)*complexMul(float2(0, -1), complexMul(_Spectrum[id.xy].xy, complex(dot(k, xz))));
+    
+    _Spectrum[id.xy] = float4(ht, htd);
+}
+
+[numthreads(1, 1, 1)]
+void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
+{
+    float2 res = float2(0.0, 0.0);
+    float2 x_v = XZ(id.x, id.y);
+    float x = x_v.x;
+    for(int n_prime = 0; n_prime < _N; n_prime++)
+    {
+        float2 k = K(n_prime, id.y);
+        res += complexMul(_Spectrum[uint2(n_prime, id.y)].xy, complex(x*k.x));
+        // res += complex(x*k.x);
+        // res += abs(_Spectrum[uint2(n_prime, id.y)].rg);
+    }
+    // res /= _N;
+    _PostHorizontalDFT[id.xy] = float4(res, 0.0, 1.0);
+    // _PostHorizontalDFT[id.xy] = _Spectrum[uint2(id.x, id.y)];
+}
+
+
+[numthreads(1, 1, 1)]
+void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
+{
+    float2 res = float2(0.0, 0.0);
+    float2 x_v = XZ(id.x, id.y);
+    float z = x_v.y;
+    for(int m_prime = 0; m_prime < _N; m_prime++)
+    {
+        float2 k = K(id.x, m_prime);
+        res += complexMul(_PostHorizontalDFT[uint2(id.x, m_prime)].xy, complex(z*k.y));
+        // res += complex(angle);
+    }
+
+    _Heightmap[id.xy] = float4(res.x / (float) _N, 0.0, 0.0, 1.0);
+}
+
