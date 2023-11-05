@@ -164,6 +164,11 @@ float2 h_tilde0(float n_prime, float m_prime)
     return one_over_sqrt2 * float2(e1, e2) * sqrt(phillips(n_prime, m_prime));
 }
 
+bool IsNaN(float x)
+{
+    return !(x < 0.0f || x > 0.0f || x == 0.0f);
+}
+
 // What actually makes the wave spectrum move.
 float2 h_tilde(float n_prime, float m_prime, float t, float2 ht0, float2 ht0conj)
 {
@@ -175,7 +180,11 @@ float2 h_tilde(float n_prime, float m_prime, float t, float2 ht0, float2 ht0conj
     const float2 c0 = float2(c, s);
     const float2 c1 = float2(c, -s);
 
-    return complexMul(ht0, c0) + complexMul(ht0conj, c1);
+    float2 res = complexMul(ht0, c0) + complexMul(ht0conj, c1);
+    if (IsNaN(res.x)) res.x = 0.0f;
+    if (IsNaN(res.y)) res.y = 0.0f;
+
+    return res;
 }
 
 [numthreads(1,1,1)]
@@ -190,29 +199,27 @@ void CS_Computeh0Spectrum(uint3 id : SV_DispatchThreadID)
 [numthreads(1,1,1)]
 void CS_Computehtilde(uint3 id : SV_DispatchThreadID)
 {
-    _Spectrum[id.xy] = float4(h_tilde((float)id.x, (float)id.y, _t, _h0spectrum[id.xy].xy, _h0spectrum[id.xy].zw), 0, 1);
-
+    float2 ht = h_tilde((float)id.x, (float)id.y, _t, _h0spectrum[id.xy].rg, _h0spectrum[id.xy].ba);
     const float2 k = K(id.x, id.y);
     const float2 xz = XZ(id.x, id.y);
-
-    _htildeDisplacement[id.xy] = float4(k/length(k)*complexMul(float2(0, -1), complexMul(_Spectrum[id.xy].xy, complex(dot(k, xz)))), 0, 0);
+    float2 htd = k/length(k)*complexMul(float2(0, -1), complexMul(_Spectrum[id.xy].xy, complex(dot(k, xz))));
+    
+    _Spectrum[id.xy] = float4(ht, htd);
 }
 
 [numthreads(1, 1, 1)]
 void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
 {
     float2 res = float2(0.0, 0.0);
-    float2 x_v = XZ(id.x, id.y) / _L + .5f;
+    float2 x_v = XZ(id.x, id.y);
     float x = x_v.x;
-    float z = x_v.y;
     for(int n_prime = 0; n_prime < _N; n_prime++)
     {
         float2 k = K(n_prime, id.y);
         res += complexMul(_Spectrum[uint2(n_prime, id.y)].xy, complex(x*k.x));
         // res += complex(x*k.x);
-        // res += _Spectrum[uint2(n_prime, id.y)].xy;
+        // res += abs(_Spectrum[uint2(n_prime, id.y)].rg);
     }
-
     // res /= _N;
     _PostHorizontalDFT[id.xy] = float4(res, 0.0, 1.0);
     // _PostHorizontalDFT[id.xy] = _Spectrum[uint2(id.x, id.y)];
@@ -224,7 +231,6 @@ void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
 {
     float2 res = float2(0.0, 0.0);
     float2 x_v = XZ(id.x, id.y);
-    float x = x_v.x;
     float z = x_v.y;
     for(int m_prime = 0; m_prime < _N; m_prime++)
     {
@@ -233,6 +239,6 @@ void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
         // res += complex(angle);
     }
 
-    _Heightmap[id.xy] = float4(length(res).xxx /(double) (_N*_N * 100.0f), 1.0);
+    _Heightmap[id.xy] = float4(res.x / (float) _N, 0.0, 0.0, 1.0);
 }
 

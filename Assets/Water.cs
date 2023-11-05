@@ -1,16 +1,19 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using Random = UnityEngine.Random;
 
+[ExecuteInEditMode]
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class Water : MonoBehaviour
 {
     public ComputeShader waterFFT;
     public Shader waterShader;
     public bool _debug = false;
-    
+
     [Header("Plane body parameter")] public float size = 100f;
 
     public int gridSizePowerOfTwo = 8;
@@ -30,10 +33,31 @@ public class Water : MonoBehaviour
     [Tooltip("Wind speed")] public float _V; // Wind speed
     [Tooltip("Phillips parameter")] public float _A;
 
+    [Header("Additionnal parameters")] public float AmplitudeOverride = 1f;
+
     private RenderTexture _h0Spectrum, _Spectrum, _Heightmap, _htildeDisplacement, _htildeSlope, _PostHorizontalDFT;
     private Material _waterMaterial;
 
-    public void GenerateGrid()
+    // Start is called before the first frame update
+    void OnEnable()
+    {
+        Init();
+    }
+
+    public void Init()
+    {
+        _N = 1 << gridSizePowerOfTwo;
+        seed = Random.Range(0, 10000000);
+        CreateTextures();
+        CreateGrid();
+        // CS_Computeh0Spectrum
+        SetComputeParameters(0);
+        waterFFT.Dispatch(0, _N, _N, 1);
+        if (_debug)
+            SaveTexture(_h0Spectrum, "h0Spectrum");
+    }
+
+    public void CreateGrid()
     {
         Mesh m = new Mesh();
         m.name = "Water Grid";
@@ -50,7 +74,7 @@ public class Water : MonoBehaviour
             for (int y = 0; y <= _N; y++, i++)
             {
                 vertices[i] = new Vector3(x * step - halfSize, 0, y * step - halfSize);
-                uv[i] = new Vector2((float) x  / _N, (float) y / _N);
+                uv[i] = new Vector2((float)x / _N, (float)y / _N);
             }
         }
 
@@ -81,79 +105,35 @@ public class Water : MonoBehaviour
         GetComponent<MeshRenderer>().material = _waterMaterial;
     }
 
-    // Start is called before the first frame update
-    void OnEnable()
+    // Stolen from https://github.com/GarrettGunnell/Water/blob/main/Assets/Scripts/FFTWater.cs#L384
+    RenderTexture CreateRenderTex(int width, int height, RenderTextureFormat format, bool useMips)
     {
-        _N = 1 << gridSizePowerOfTwo;
-        CreateResources();
-        GenerateGrid();
-        // CS_Computeh0Spectrum
-        SetComputeParameters(0);
-        waterFFT.Dispatch(0, _N, _N, 1);
-        if (_debug)
-            SaveTexture(_h0Spectrum, "h0Spectrum");
+        RenderTexture rt = new RenderTexture(width, height, 0, format, RenderTextureReadWrite.Linear);
+        rt.filterMode = FilterMode.Bilinear;
+        rt.wrapMode = TextureWrapMode.Repeat;
+        rt.enableRandomWrite = true;
+        rt.useMipMap = useMips;
+        rt.autoGenerateMips = false;
+        rt.enableRandomWrite = true;
+        rt.anisoLevel = 16;
+        rt.Create();
+
+        return rt;
     }
 
-    void CreateResources()
+    void CreateTextures()
     {
-        _h0Spectrum = new RenderTexture(_N, _N, 0, RenderTextureFormat.ARGBFloat,
-            RenderTextureReadWrite.Linear);
-        _h0Spectrum.filterMode = FilterMode.Bilinear;
-        _h0Spectrum.wrapMode = TextureWrapMode.Repeat;
-        _h0Spectrum.enableRandomWrite = true;
-        _h0Spectrum.autoGenerateMips = false;
-        _h0Spectrum.anisoLevel = 16;
-        _h0Spectrum.Create();
+        _h0Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
 
-        _Spectrum = new RenderTexture(_N, _N, 0, RenderTextureFormat.ARGBFloat,
-            RenderTextureReadWrite.Linear);
-        _Spectrum.filterMode = FilterMode.Bilinear;
-        _Spectrum.wrapMode = TextureWrapMode.Repeat;
-        _Spectrum.enableRandomWrite = true;
-        _Spectrum.autoGenerateMips = false;
-        _Spectrum.anisoLevel = 16;
-        _Spectrum.Create();
-        
-        _Heightmap = new RenderTexture(_N, _N, 0, RenderTextureFormat.ARGBFloat,
-            RenderTextureReadWrite.Linear);
-        _Heightmap.filterMode = FilterMode.Bilinear;
-        _Heightmap.wrapMode = TextureWrapMode.Repeat;
-        _Heightmap.enableRandomWrite = true;
-        _Heightmap.autoGenerateMips = false;
-        _Heightmap.anisoLevel = 16;
-        _Heightmap.Create();
-        
-        _htildeDisplacement = new RenderTexture(_N, _N, 0, RenderTextureFormat.ARGBFloat,
-            RenderTextureReadWrite.Linear);
-        _htildeDisplacement.filterMode = FilterMode.Bilinear;
-        _htildeDisplacement.wrapMode = TextureWrapMode.Repeat;
-        _htildeDisplacement.enableRandomWrite = true;
-        _htildeDisplacement.autoGenerateMips = false;
-        _htildeDisplacement.anisoLevel = 16;
-        _htildeDisplacement.Create();
-        
-        _htildeSlope = new RenderTexture(_N, _N, 0, RenderTextureFormat.ARGBFloat,
-            RenderTextureReadWrite.Linear);
-        _htildeSlope.filterMode = FilterMode.Bilinear;
-        _htildeSlope.wrapMode = TextureWrapMode.Repeat;
-        _htildeSlope.enableRandomWrite = true;
-        _htildeSlope.autoGenerateMips = false;
-        _htildeSlope.anisoLevel = 16;
-        _htildeSlope.Create();
-        
-        _PostHorizontalDFT = new RenderTexture(_N, _N, 0, RenderTextureFormat.ARGBFloat,
-            RenderTextureReadWrite.Linear);
-        _PostHorizontalDFT.filterMode = FilterMode.Bilinear;
-        _PostHorizontalDFT.wrapMode = TextureWrapMode.Repeat;
-        _PostHorizontalDFT.enableRandomWrite = true;
-        _PostHorizontalDFT.autoGenerateMips = false;
-        _PostHorizontalDFT.anisoLevel = 16;
-        _PostHorizontalDFT.Create();
-        
-    }
+        _Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
 
-    void CreateDebugResources()
-    {
+        _Heightmap = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+
+        _htildeDisplacement = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+
+        _htildeSlope = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+
+        _PostHorizontalDFT = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
     }
 
     void SetComputeParameters(int kernel = 0)
@@ -167,7 +147,8 @@ public class Water : MonoBehaviour
         waterFFT.SetFloat("_dt", Time.deltaTime);
         waterFFT.SetFloat("_Seed", seed);
         waterFFT.SetVector("_offsets",
-            new Vector3((Random.value - 0.5f) * 1000.0f, (Random.value - 0.5f) * 1000.0f, (Random.value - 0.5f) * 1000.0f));
+            new Vector3((Random.value - 0.5f) * 1000.0f, (Random.value - 0.5f) * 1000.0f,
+                (Random.value - 0.5f) * 1000.0f));
         waterFFT.SetTexture(kernel, "_h0spectrum", _h0Spectrum);
         waterFFT.SetTexture(kernel, "_Spectrum", _Spectrum);
         waterFFT.SetTexture(kernel, "_Heightmap", _Heightmap);
@@ -177,40 +158,11 @@ public class Water : MonoBehaviour
     }
 
     void SetShaderParameter()
-    {       
-        _waterMaterial.SetTexture("_Heightmap", _Spectrum);
-    }
-
-    private int i = 0;
-    // Update is called once per frame
-    void Update()
     {
-        // CS_Computehtilde
-        SetComputeParameters(1);
-        waterFFT.Dispatch(1, _N, _N, 1);
-        // CS_HorizontalDFT
-        SetComputeParameters(2);
-        waterFFT.Dispatch(2, _N, _N, 1);
-        // CS_VerticalDFT
-        SetComputeParameters(3);
-        waterFFT.Dispatch(3, _N, _N, 1);
-
-        SetShaderParameter();
-        
-        
-        
-        if (Input.GetButtonDown("Fire1"))
-        {
-            SaveTexture(_Heightmap, "heightmap");
-            i = 0;
-        }
-
-        if (Input.GetButton("Fire1") && i < 1)
-        {
-            SaveTexture(_Spectrum, "spectrum" + i++);
-            SaveTexture(_PostHorizontalDFT, "posthoriz" + i);
-        }
+        _waterMaterial.SetTexture("_Heightmap", _Heightmap);
+        _waterMaterial.SetFloat("_AmplitudeMult", AmplitudeOverride);
     }
+
 
     // Used for debugging
     void SaveTexture(RenderTexture tex, string name = "picture")
@@ -225,4 +177,94 @@ public class Water : MonoBehaviour
         System.IO.File.WriteAllBytes(Application.dataPath + "/../" + name + ".png", t.EncodeToPNG());
         Debug.Log("Image saved to " + Application.dataPath + "/../" + name + ".png");
     }
+
+    // Used for debug purposes
+    private int i = 0;
+
+    // Update is called once per frame
+    void Update()
+    {
+        // CS_Computehtilde
+        SetComputeParameters(1);
+        waterFFT.Dispatch(1, _N, _N, 1);
+
+        // Actual FFT
+        // CS_HorizontalDFT
+        SetComputeParameters(2);
+        waterFFT.Dispatch(2, _N, _N, 1);
+        // CS_VerticalDFT
+        SetComputeParameters(3);
+        waterFFT.Dispatch(3, _N, _N, 1);
+
+        SetShaderParameter();
+
+#if UNITY_EDITOR
+        // If is playing mode
+        if (!Application.isPlaying && false)
+        {
+            SaveTexture(_Heightmap, "heightmap");
+
+            SaveTexture(_Spectrum, "spectrum");
+            SaveTexture(_PostHorizontalDFT, "posthoriz");
+        }
+#endif
+    }
+
+    public void CleanupTextures()
+    {
+#if UNITY_EDITOR
+        DestroyImmediate(_h0Spectrum);
+        DestroyImmediate(_Spectrum);
+        DestroyImmediate(_Heightmap);
+        DestroyImmediate(_htildeDisplacement);
+        DestroyImmediate(_htildeSlope);
+        DestroyImmediate(_PostHorizontalDFT);
+#else
+        Destroy(_h0Spectrum);
+        Destroy(_Spectrum);
+        Destroy(_Heightmap);
+        Destroy(_htildeDisplacement);
+        Destroy(_htildeSlope);
+        Destroy(_PostHorizontalDFT);
+#endif
+    }
+
+    public void Cleanup()
+    {
+        if (_waterMaterial)
+        {
+#if UNITY_EDITOR
+            DestroyImmediate(_waterMaterial);
+#else
+            Destroy(_waterMaterial);
+#endif
+            _waterMaterial = null;
+        }
+
+        CleanupTextures();
+    }
+
+    private void OnDisable()
+    {
+        Cleanup();
+    }
 }
+
+// Custom editor
+#if UNITY_EDITOR
+[UnityEditor.CustomEditor(typeof(Water))]
+public class WaterEditor : UnityEditor.Editor
+{
+    public override void OnInspectorGUI()
+    {
+        DrawDefaultInspector();
+
+        Water water = (Water)target;
+        if (GUILayout.Button("Generate Grid"))
+        {
+            water.Cleanup();
+            water.Init();
+        }
+    }
+}
+#endif
