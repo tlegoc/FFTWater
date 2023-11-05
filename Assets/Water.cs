@@ -47,7 +47,6 @@ public class Water : MonoBehaviour
     public void Init()
     {
         _N = 1 << gridSizePowerOfTwo;
-        seed = Random.Range(0, 10000000);
         CreateTextures();
         CreateGrid();
         // CS_Computeh0Spectrum
@@ -55,6 +54,11 @@ public class Water : MonoBehaviour
         waterFFT.Dispatch(0, _N, _N, 1);
         if (_debug)
             SaveTexture(_h0Spectrum, "h0Spectrum");
+    }
+
+    public void NewSeet()
+    {
+        seed = Random.Range(0, 10000000);
     }
 
     public void CreateGrid()
@@ -123,17 +127,17 @@ public class Water : MonoBehaviour
 
     void CreateTextures()
     {
-        _h0Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+        _h0Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
 
-        _Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+        _Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.RGFloat, true);
 
-        _Heightmap = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+        _Heightmap = CreateRenderTex(_N, _N, RenderTextureFormat.RFloat, true);
 
-        _htildeDisplacement = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+        _htildeDisplacement = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
 
-        _htildeSlope = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+        _htildeSlope = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
 
-        _PostHorizontalDFT = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBHalf, true);
+        _PostHorizontalDFT = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
     }
 
     void SetComputeParameters(int kernel = 0)
@@ -264,6 +268,11 @@ public class WaterEditor : UnityEditor.Editor
         {
             water.Cleanup();
             water.Init();
+        }
+        
+        if (GUILayout.Button("New seed"))
+        {
+            water.NewSeet();
         }
     }
 }
