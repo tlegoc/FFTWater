@@ -18,10 +18,7 @@ public class Water : MonoBehaviour
 
     public int gridSizePowerOfTwo = 8;
 
-    private int _N
-    {
-        get { return 1 << gridSizePowerOfTwo; }
-    }
+    private int _N;
 
     private float L
     {
@@ -35,10 +32,9 @@ public class Water : MonoBehaviour
     [Tooltip("Phillips parameter")] public float _A;
 
     [Header("Additionnal parameters")] public float AmplitudeOverride = 1f;
-    
+
     public Texture2D noiseTexture;
-    [Tooltip("Controls noise generation")]
-    public int seed = 0;
+    [Tooltip("Controls noise generation")] public int seed = 0;
 
     private RenderTexture _noiseTextureInternal,
         _h0Spectrum,
@@ -49,7 +45,7 @@ public class Water : MonoBehaviour
         _PostHorizontalDFT;
 
     private Material _waterMaterial;
-    
+
     private bool _isInitialized = false;
 
     // Helpers
@@ -65,7 +61,7 @@ public class Water : MonoBehaviour
         waterFFT.SetTexture(0, "_noiseTextureInternal", _noiseTextureInternal);
         waterFFT.SetFloat("_Seed", seed);
         waterFFT.Dispatch(0, _N, _N, 1);
-        
+
         SaveTexture(_noiseTextureInternal, "noiseTEST");
 
         // Copy data to noiseTexture
@@ -111,6 +107,8 @@ public class Water : MonoBehaviour
             Debug.Log("You must specify a noise texture or recreate one.");
             return;
         }
+
+        _N = 1 << gridSizePowerOfTwo;
         
         _h0Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
 
@@ -173,7 +171,7 @@ public class Water : MonoBehaviour
         SetComputeParameters(1);
         waterFFT.SetTexture(1, "_noiseTexture", noiseTexture);
         waterFFT.Dispatch(1, _N, _N, 1);
-        
+
         _isInitialized = true;
     }
 
@@ -206,6 +204,7 @@ public class Water : MonoBehaviour
 
 
     // Used for debugging
+
     #region DEBUG_FUNCTIONS
 
     void SaveTexture(RenderTexture tex, string name = "picture")
@@ -243,7 +242,7 @@ public class Water : MonoBehaviour
     void Update()
     {
         if (!_isInitialized) return;
-        
+
         // CS_Computehtilde
         SetComputeParameters(2);
         waterFFT.Dispatch(2, _N, _N, 1);
