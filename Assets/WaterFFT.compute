@@ -26,12 +26,13 @@ RWTexture2D<float4> _noiseTextureInternal;
 Texture2D<float4> _noiseTexture;
 RWTexture2D<float4> _h0spectrum; // h0, h0conj
 RWTexture2D<float2> _Spectrum; // Spectrum updated each frame
-// (ha, hb, nxa, nxb)
-// (nya, nyb, nza, nzc)
-// 
+// (ha, hb, 0, 0)
+// (nxa, nxb, nza, nzc)
+// (Dxa, Dxb, Dza, Dzb)
 RWTexture2DArray<float4> _PostHorizontalDFT; // Transition texture between horizontal and vertical DFTs
 RWTexture2D<float1> _Heightmap; // Output heightmap
 RWTexture2D<float4> _Normals;
+RWTexture2D<float2> _Displacement;
 
 //
 //
@@ -130,7 +131,10 @@ float phillips(int n_prime, int m_prime)
     const float dot_prod = dot(normalize(_w), normalize(k));
     const float frac_top = exp(-1.0f / (k_length2 * l * l));
 
-    return _A * (frac_top / k_length4) * dot_prod * dot_prod;
+    float result = _A * (frac_top / k_length4) * dot_prod * dot_prod;
+    if (isnan(result))
+        return 0.0;
+    else return result;
 }
 
 // Initial spectrum generation
@@ -149,11 +153,6 @@ float2 h_tilde0(float n_prime, float m_prime, bool reverse = false)
         return one_over_sqrt2 * _noiseTexture[uint2(-n_prime, -m_prime)].zw * sqrt(phillips(n_prime, m_prime));
 }
 
-bool IsNaN(float x)
-{
-    return !(x < 0.0f || x > 0.0f || x == 0.0f);
-}
-
 // What actually makes the wave spectrum move.
 float2 h_tilde(float n_prime, float m_prime, float t, float2 ht0, float2 ht0conj)
 {
@@ -166,8 +165,8 @@ float2 h_tilde(float n_prime, float m_prime, float t, float2 ht0, float2 ht0conj
     const float2 c1 = float2(c, -s);
 
     float2 res = complexMul(ht0, c0) + complexMul(ht0conj, c1);
-    if (IsNaN(res.x)) res.x = 0.0f;
-    if (IsNaN(res.y)) res.y = 0.0f;
+    if (isnan(res.x)) res.x = 0.0f;
+    if (isnan(res.y)) res.y = 0.0f;
 
     return res;
 }
@@ -204,6 +203,8 @@ void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
     float2 res_h = float2(0.0, 0.0);
     float2 res_n_x = float2(0.0, 0.0);
     float2 res_n_z = float2(0.0, 0.0);
+    float2 res_d_x = float2(0.0, 0.0);
+    float2 res_d_z = float2(0.0, 0.0);
     float2 x_v = XZ(id.x, id.y);
     float x = x_v.x;
     for (int n_prime = 0; n_prime < _N; n_prime++)
@@ -211,11 +212,18 @@ void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
         float2 k = K(n_prime, id.y);
         float2 c = complexMul(_Spectrum[uint2(n_prime, id.y)], complex(x * k.x));
         res_h += c;
-        res_n_x += k.x * complexMul(float2(0.0, -1.0), c); 
-        res_n_z += k.y * complexMul(float2(0.0, -1.0), c); 
+
+        res_n_x += c * k.x;
+        res_n_z += c;
+        res_d_z += c;
+        if (length(k) > 0.000001f)
+        {
+            res_d_x += c * k.x/length(k);
+        }
     }
     _PostHorizontalDFT[uint3(id.xy, 0)] = float4(res_h, 0.0, 0.0);
-    // _PostHorizontalDFT[uint3(id.xy, 1)] = float4(res_n_x, res_n_z);
+    _PostHorizontalDFT[uint3(id.xy, 1)] = float4(res_n_x, res_n_z);
+    _PostHorizontalDFT[uint3(id.xy, 2)] = float4(res_d_x, res_d_z);
 }
 
 
@@ -225,6 +233,8 @@ void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
     float2 res_h = float2(0.0, 0.0);
     float2 res_n_x = float2(0.0, 0.0);
     float2 res_n_z = float2(0.0, 0.0);
+    float2 res_d_x = float2(0.0, 0.0);
+    float2 res_d_z = float2(0.0, 0.0);
     float2 x_v = XZ(id.x, id.y);
     float z = x_v.y;
     for (int m_prime = 0; m_prime < _N; m_prime++)
@@ -232,14 +242,24 @@ void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
         float2 k = K(id.x, m_prime);
         float2 c = complexMul(_PostHorizontalDFT[uint3(id.x, m_prime,0)].xy, complex(z * k.y));
         res_h += c;
-        c = complexMul(_PostHorizontalDFT[uint3(id.x, m_prime,1)].xz, complex(z * k.y));
-        res_n_x += k.x * complexMul(float2(0.0, -1.0), c); 
-        res_n_z += k.y * complexMul(float2(0.0, -1.0), c); 
+
+        res_n_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].xy, complex(z * k.y));
+        res_n_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].zw, complex(z * k.y)) * k.y;
+        
+        res_d_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].xy, complex(z * k.y));
+        if (length(k) > 0.000001f)
+        {
+            res_d_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].zw, complex(z * k.y)) * k.y /length(k);
+        }
     }
 
+    res_n_x = complexMul(res_n_x, float2(0, 1));
+    res_n_z = complexMul(res_n_z, float2(0, 1));
+    res_d_x = complexMul(res_d_x, float2(0, -1));
+    res_d_z = complexMul(res_d_z, float2(0, -1));
+
     _Heightmap[id.xy] = res_h.x;
-    // float3 normal = normalize(float3(res_n_x.x, 1.0, res_n_z.x));
-    // Compute normals based on difference of neighbouring heights
-    float3 normal = normalize(float3(res_h.x - _Heightmap[id.xy - int2(1, 0)], 1.0, res_h.x - _Heightmap[id.xy - int2(0, 1)]));
+    float3 normal = normalize(float3(-res_n_x.x, 1.0, -res_n_z.x));
     _Normals[id.xy] = float4(normal, 1.0);
+    _Displacement[id.xy] = float2(-res_d_x.x, -res_d_z.x);
 }

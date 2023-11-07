@@ -41,7 +41,8 @@ public class Water : MonoBehaviour
         _Spectrum,
         _Heightmap,
         _PostHorizontalDFT,
-        _Normals;
+        _Normals,
+        _Displacement;
 
     private Material _waterMaterial;
 
@@ -122,6 +123,8 @@ public class Water : MonoBehaviour
         _PostHorizontalDFT = CreateRenderTex(_N, _N, 3, RenderTextureFormat.ARGBFloat, true);
 
         _Normals = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
+        
+        _Displacement = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, true);
 
         Mesh m = new Mesh();
         m.name = "Water Grid";
@@ -194,12 +197,14 @@ public class Water : MonoBehaviour
         waterFFT.SetTexture(kernel, "_Heightmap", _Heightmap);
         waterFFT.SetTexture(kernel, "_Normals", _Normals);
         waterFFT.SetTexture(kernel, "_PostHorizontalDFT", _PostHorizontalDFT);
+        waterFFT.SetTexture(kernel, "_Displacement", _Displacement);
     }
 
     void SetShaderParameter()
     {
         _waterMaterial.SetTexture("_Heightmap", _Heightmap);
         _waterMaterial.SetTexture("_Normals", _Normals);
+        _waterMaterial.SetTexture("_Displacement", _Displacement);
         _waterMaterial.SetFloat("_AmplitudeMult", AmplitudeOverride);
     }
 
@@ -263,12 +268,16 @@ public class Water : MonoBehaviour
         DestroyImmediate(_Spectrum);
         DestroyImmediate(_Heightmap);
         DestroyImmediate(_PostHorizontalDFT);
+        DestroyImmediate(_Normals);
+        DestroyImmediate(_Displacement);
 #else
         Destroy(_noiseTexture);
         Destroy(_h0Spectrum);
         Destroy(_Spectrum);
         Destroy(_Heightmap);
         Destroy(_PostHorizontalDFT);
+        Destroy(_Normals);
+        Destroy(_Displacement);
 #endif
     }
 
