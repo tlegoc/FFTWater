@@ -40,9 +40,8 @@ public class Water : MonoBehaviour
         _h0Spectrum,
         _Spectrum,
         _Heightmap,
-        _htildeDisplacement,
-        _htildeSlope,
-        _PostHorizontalDFT;
+        _PostHorizontalDFT,
+        _Normals;
 
     private Material _waterMaterial;
 
@@ -56,7 +55,7 @@ public class Water : MonoBehaviour
 
     public void GenerateNoiseTexture()
     {
-        _noiseTextureInternal = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
+        _noiseTextureInternal = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
 
         waterFFT.SetTexture(0, "_noiseTextureInternal", _noiseTextureInternal);
         waterFFT.SetFloat("_Seed", seed);
@@ -80,12 +79,16 @@ public class Water : MonoBehaviour
     }
 
     // Stolen from https://github.com/GarrettGunnell/Water/blob/main/Assets/Scripts/FFTWater.cs#L384
-    RenderTexture CreateRenderTex(int width, int height, RenderTextureFormat format, bool useMips)
-    {
+    RenderTexture CreateRenderTex(int width, int height, int depth, RenderTextureFormat format, bool useMips) {
         RenderTexture rt = new RenderTexture(width, height, 0, format, RenderTextureReadWrite.Linear);
+        if (depth > 1)
+            rt.dimension = TextureDimension.Tex2DArray;
+        else
+            rt.dimension = TextureDimension.Tex2D;
         rt.filterMode = FilterMode.Bilinear;
         rt.wrapMode = TextureWrapMode.Repeat;
         rt.enableRandomWrite = true;
+        rt.volumeDepth = depth;
         rt.useMipMap = useMips;
         rt.autoGenerateMips = false;
         rt.enableRandomWrite = true;
@@ -110,17 +113,15 @@ public class Water : MonoBehaviour
 
         _N = 1 << gridSizePowerOfTwo;
         
-        _h0Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
+        _h0Spectrum = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
 
-        _Spectrum = CreateRenderTex(_N, _N, RenderTextureFormat.RGFloat, true);
+        _Spectrum = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, true);
 
-        _Heightmap = CreateRenderTex(_N, _N, RenderTextureFormat.RFloat, true);
+        _Heightmap = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RFloat, true);
 
-        _htildeDisplacement = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
+        _PostHorizontalDFT = CreateRenderTex(_N, _N, 3, RenderTextureFormat.ARGBFloat, true);
 
-        _htildeSlope = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
-
-        _PostHorizontalDFT = CreateRenderTex(_N, _N, RenderTextureFormat.ARGBFloat, true);
+        _Normals = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
 
         Mesh m = new Mesh();
         m.name = "Water Grid";
@@ -191,14 +192,14 @@ public class Water : MonoBehaviour
         waterFFT.SetTexture(kernel, "_h0spectrum", _h0Spectrum);
         waterFFT.SetTexture(kernel, "_Spectrum", _Spectrum);
         waterFFT.SetTexture(kernel, "_Heightmap", _Heightmap);
-        waterFFT.SetTexture(kernel, "_htildeDisplacement", _htildeDisplacement);
-        waterFFT.SetTexture(kernel, "_htildeSlope", _htildeSlope);
+        waterFFT.SetTexture(kernel, "_Normals", _Normals);
         waterFFT.SetTexture(kernel, "_PostHorizontalDFT", _PostHorizontalDFT);
     }
 
     void SetShaderParameter()
     {
         _waterMaterial.SetTexture("_Heightmap", _Heightmap);
+        _waterMaterial.SetTexture("_Normals", _Normals);
         _waterMaterial.SetFloat("_AmplitudeMult", AmplitudeOverride);
     }
 
@@ -231,8 +232,6 @@ public class Water : MonoBehaviour
         SaveTexture(_h0Spectrum, "h0spectrum");
         SaveTexture(_Spectrum, "spectrum");
         SaveTexture(_Heightmap, "heightmap");
-        SaveTexture(_htildeDisplacement, "htildeDisplacement");
-        SaveTexture(_htildeSlope, "htildeSlope");
         SaveTexture(_PostHorizontalDFT, "posthoriz");
     }
 
@@ -263,16 +262,12 @@ public class Water : MonoBehaviour
         DestroyImmediate(_h0Spectrum);
         DestroyImmediate(_Spectrum);
         DestroyImmediate(_Heightmap);
-        DestroyImmediate(_htildeDisplacement);
-        DestroyImmediate(_htildeSlope);
         DestroyImmediate(_PostHorizontalDFT);
 #else
         Destroy(_noiseTexture);
         Destroy(_h0Spectrum);
         Destroy(_Spectrum);
         Destroy(_Heightmap);
-        Destroy(_htildeDisplacement);
-        Destroy(_htildeSlope);
         Destroy(_PostHorizontalDFT);
 #endif
     }
