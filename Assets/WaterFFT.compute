@@ -17,13 +17,11 @@ float _L;
 float2 _w; // Wind dir
 float _V; // Wind speed
 float _A; // I still don't know what this param does
-float _dt; // Delta time
 float _t; // Time
 int _Seed;
-float3 _offsets; // CPU random offsets
 
 RWTexture2D<float4> _noiseTextureInternal;
-Texture2D<float4> _noiseTexture;
+Texture2D _noiseTexture;
 RWTexture2D<float4> _h0spectrum; // h0, h0conj
 RWTexture2D<float2> _Spectrum; // Spectrum updated each frame
 // (ha, hb, 0, 0)
@@ -171,16 +169,16 @@ float2 h_tilde(float n_prime, float m_prime, float t, float2 ht0, float2 ht0conj
     return res;
 }
 
-[numthreads(1,1,1)]
+[numthreads(8, 8,1)]
 void CS_ComputeNoiseTexture(uint3 id : SV_DispatchThreadID)
 {
-    float4 samples = float4(hash(_Seed * id.y + id.x * 100), hash(_Seed * 2 * id.y + id.x * 100),
-                            hash(_Seed * 3 * id.y + id.x * 100), hash(_Seed * 4 * id.y + id.x * 100));
+    float4 samples = float4(hash(_Seed * id.y + id.x * _N), hash(_Seed * 2 * id.y + id.x * _N),
+                            hash(_Seed * 3 * id.y + id.x * _N), hash(_Seed * 4 * id.y + id.x * _N));
     _noiseTextureInternal[id.xy] = float4(UniformToGaussian(samples.x, samples.y),
                                           UniformToGaussian(samples.z, samples.w));
 }
 
-[numthreads(1,1,1)]
+[numthreads(8, 8,1)]
 void CS_Computeh0Spectrum(uint3 id : SV_DispatchThreadID)
 {
     const float2 ht0 = h_tilde0((float)id.x, (float)id.y);
@@ -189,7 +187,7 @@ void CS_Computeh0Spectrum(uint3 id : SV_DispatchThreadID)
     _h0spectrum[id.xy] = float4(ht0, ht0conj);
 }
 
-[numthreads(1,1,1)]
+[numthreads(8, 8, 1)]
 void CS_Computehtilde(uint3 id : SV_DispatchThreadID)
 {
     float2 ht = h_tilde((float)id.x, (float)id.y, _t, _h0spectrum[id.xy].rg, _h0spectrum[id.xy].ba);
@@ -197,7 +195,7 @@ void CS_Computehtilde(uint3 id : SV_DispatchThreadID)
     _Spectrum[id.xy] = ht;
 }
 
-[numthreads(1, 1, 1)]
+[numthreads(8, 8, 1)]
 void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
 {
     float2 res_h = float2(0.0, 0.0);
@@ -216,7 +214,7 @@ void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
         res_n_x += c * k.x;
         res_n_z += c;
         res_d_z += c;
-        if (length(k) > 0.000001f)
+        if (length(k) > 0.00000001f)
         {
             res_d_x += c * k.x/length(k);
         }
@@ -227,7 +225,7 @@ void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
 }
 
 
-[numthreads(1, 1, 1)]
+[numthreads(8, 8, 1)]
 void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
 {
     float2 res_h = float2(0.0, 0.0);
@@ -247,7 +245,7 @@ void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
         res_n_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].zw, complex(z * k.y)) * k.y;
         
         res_d_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].xy, complex(z * k.y));
-        if (length(k) > 0.000001f)
+        if (length(k) > 0.00000001f)
         {
             res_d_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].zw, complex(z * k.y)) * k.y /length(k);
         }

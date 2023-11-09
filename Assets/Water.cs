@@ -12,7 +12,6 @@ public class Water : MonoBehaviour
 {
     public ComputeShader waterFFT;
     public Shader waterShader;
-    public bool _debug = false;
 
     [Header("Plane body parameter")] public float size = 100f;
 
@@ -60,7 +59,7 @@ public class Water : MonoBehaviour
 
         waterFFT.SetTexture(0, "_noiseTextureInternal", _noiseTextureInternal);
         waterFFT.SetFloat("_Seed", seed);
-        waterFFT.Dispatch(0, _N, _N, 1);
+        waterFFT.Dispatch(0, _N/8, _N/8, 1);
 
         SaveTexture(_noiseTextureInternal, "noiseTEST");
 
@@ -112,6 +111,8 @@ public class Water : MonoBehaviour
             return;
         }
 
+        if (gridSizePowerOfTwo < 3) gridSizePowerOfTwo = 3;
+        
         _N = 1 << gridSizePowerOfTwo;
         
         _h0Spectrum = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
@@ -174,7 +175,7 @@ public class Water : MonoBehaviour
         // CS_Computeh0Spectrum
         SetComputeParameters(1);
         waterFFT.SetTexture(1, "_noiseTexture", noiseTexture);
-        waterFFT.Dispatch(1, _N, _N, 1);
+        waterFFT.Dispatch(1, _N/8, _N/8, 1);
 
         _isInitialized = true;
     }
@@ -187,11 +188,7 @@ public class Water : MonoBehaviour
         waterFFT.SetFloat("_V", _V);
         waterFFT.SetFloat("_A", _A);
         waterFFT.SetFloat("_t", Time.time);
-        waterFFT.SetFloat("_dt", Time.deltaTime);
         waterFFT.SetFloat("_Seed", seed);
-        waterFFT.SetVector("_offsets",
-            new Vector3((Random.value - 0.5f) * 1000.0f, (Random.value - 0.5f) * 1000.0f,
-                (Random.value - 0.5f) * 1000.0f));
         waterFFT.SetTexture(kernel, "_h0spectrum", _h0Spectrum);
         waterFFT.SetTexture(kernel, "_Spectrum", _Spectrum);
         waterFFT.SetTexture(kernel, "_Heightmap", _Heightmap);
@@ -249,14 +246,14 @@ public class Water : MonoBehaviour
 
         // CS_Computehtilde
         SetComputeParameters(2);
-        waterFFT.Dispatch(2, _N, _N, 1);
+        waterFFT.Dispatch(2, _N/8, _N/8, 1);
 
         // CS_HorizontalDFT
         SetComputeParameters(3);
-        waterFFT.Dispatch(3, _N, _N, 1);
+        waterFFT.Dispatch(3, _N/8, _N/8, 1);
         // CS_VerticalDFT
         SetComputeParameters(4);
-        waterFFT.Dispatch(4, _N, _N, 1);
+        waterFFT.Dispatch(4, _N/8, _N/8, 1);
 
         SetShaderParameter();
     }
@@ -311,6 +308,12 @@ public class WaterEditor : UnityEditor.Editor
     {
         DrawDefaultInspector();
 
+        GUILayout.Space(10);
+        GUILayout.Label("How to use:\n" +
+                        "1. Create a new noise texture or use an existing one.\nChanging the seed will change the noise.\n" +
+                        "2. Initialize the water.\n" +
+                        "3. Play with the parameters.\n" +
+                        "4. Done!\n");
         Water water = (Water)target;
         if (GUILayout.Button("Initialize"))
         {
