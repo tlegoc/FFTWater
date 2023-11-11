@@ -68,9 +68,7 @@ public class Water : MonoBehaviour
         waterFFT.SetTexture(0, "_noiseTextureInternal", _noiseTextureInternal);
         waterFFT.SetFloat("_Seed", seed);
         waterFFT.Dispatch(0, _N/8, _N/8, 1);
-
-        SaveTexture(_noiseTextureInternal, "noiseTEST");
-
+        
         // Copy data to noiseTexture
         noiseTexture = new Texture2D(_N, _N, TextureFormat.RGBAFloat, false);
         noiseTexture.name = "Noise Texture";
