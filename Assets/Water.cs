@@ -47,6 +47,13 @@ public class Water : MonoBehaviour
 
     private bool _isInitialized = false;
 
+
+    public void CalcN()
+    {
+        if (gridSizePowerOfTwo < 3) gridSizePowerOfTwo = 3;
+        
+        _N = 1 << gridSizePowerOfTwo;
+    }
     // Helpers
     public void NewSeed()
     {
@@ -55,6 +62,7 @@ public class Water : MonoBehaviour
 
     public void GenerateNoiseTexture()
     {
+        CalcN();
         _noiseTextureInternal = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
 
         waterFFT.SetTexture(0, "_noiseTextureInternal", _noiseTextureInternal);
@@ -110,10 +118,8 @@ public class Water : MonoBehaviour
             Debug.Log("You must specify a noise texture or recreate one.");
             return;
         }
-
-        if (gridSizePowerOfTwo < 3) gridSizePowerOfTwo = 3;
         
-        _N = 1 << gridSizePowerOfTwo;
+        CalcN();
         
         _h0Spectrum = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
 
@@ -330,15 +336,13 @@ public class WaterEditor : UnityEditor.Editor
         {
             water.GenerateNoiseTexture();
         }
-
-        if (GUILayout.Button("Save noise texture"))
+        
+        if (GUILayout.Button("Full reinit"))
         {
-            water.SaveNoiseTexture();
-        }
-
-        if (GUILayout.Button("Export textures"))
-        {
-            water.SaveAllTextures();
+            water.Cleanup();
+            water.NewSeed();
+            water.GenerateNoiseTexture();
+            water.Init();
         }
     }
 }

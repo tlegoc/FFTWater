@@ -172,8 +172,8 @@ float2 h_tilde(float n_prime, float m_prime, float t, float2 ht0, float2 ht0conj
 [numthreads(8, 8,1)]
 void CS_ComputeNoiseTexture(uint3 id : SV_DispatchThreadID)
 {
-    float4 samples = float4(hash(_Seed * id.y + id.x * _N), hash(_Seed * 2 * id.y + id.x * _N),
-                            hash(_Seed * 3 * id.y + id.x * _N), hash(_Seed * 4 * id.y + id.x * _N));
+    float4 samples = float4(hash(_Seed + id.y + id.x * _N + _N), hash(2 * (_Seed + id.y + id.x * _N + _N)),
+                            hash(3 * (_Seed + id.y + id.x * _N + _N)), hash(4 * (_Seed + id.y + id.x * _N + _N)));
     _noiseTextureInternal[id.xy] = float4(UniformToGaussian(samples.x, samples.y),
                                           UniformToGaussian(samples.z, samples.w));
 }
@@ -214,7 +214,7 @@ void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
         res_n_x += c * k.x;
         res_n_z += c;
         res_d_z += c;
-        if (length(k) > 0.00000001f)
+        if (length(k) > 0.9f)
         {
             res_d_x += c * k.x/length(k);
         }
@@ -245,7 +245,7 @@ void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
         res_n_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].zw, complex(z * k.y)) * k.y;
         
         res_d_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].xy, complex(z * k.y));
-        if (length(k) > 0.00000001f)
+        if (length(k) > 0.9f)
         {
             res_d_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].zw, complex(z * k.y)) * k.y /length(k);
         }
