@@ -28,7 +28,7 @@ public class Water : MonoBehaviour
     public Vector2 _w;
 
     [Tooltip("Wind speed")] public float _V; // Wind speed
-    [Tooltip("Phillips parameter")] public float _A;
+    [Tooltip("Phillips parameter")] private float _A = 1.8e-05f;
 
     [Header("Additionnal parameters")] public float AmplitudeOverride = 1f;
 
