@@ -182,6 +182,7 @@ public class Water : MonoBehaviour
         waterFFT.Dispatch(1, _N/8, _N/8, 1);
 
         _isInitialized = true;
+        SetShaderParameter();
     }
 
     void SetComputeParameters(int kernel = 0)
@@ -258,8 +259,6 @@ public class Water : MonoBehaviour
         // CS_VerticalDFT
         SetComputeParameters(4);
         waterFFT.Dispatch(4, _N/8, _N/8, 1);
-
-        SetShaderParameter();
     }
 
     public void CleanupTextures()

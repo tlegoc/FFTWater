@@ -204,17 +204,16 @@ void CS_HorizontalDFT(uint3 id : SV_DispatchThreadID)
     float2 res_d_x = float2(0.0, 0.0);
     float2 res_d_z = float2(0.0, 0.0);
     float2 x_v = XZ(id.x, id.y);
-    float x = x_v.x;
     for (int n_prime = 0; n_prime < _N; n_prime++)
     {
         float2 k = K(n_prime, id.y);
-        float2 c = complexMul(_Spectrum[uint2(n_prime, id.y)], complex(x * k.x));
+        float2 c = complexMul(_Spectrum[uint2(n_prime, id.y)], complex(x_v.x * k.x));
         res_h += c;
 
         res_n_x += c * k.x;
         res_n_z += c;
         res_d_z += c;
-        if (length(k) > 0.9f)
+        if (length(k) > 0.99f)
         {
             res_d_x += c * k.x/length(k);
         }
@@ -234,20 +233,19 @@ void CS_VerticalDFT(uint3 id : SV_DispatchThreadID)
     float2 res_d_x = float2(0.0, 0.0);
     float2 res_d_z = float2(0.0, 0.0);
     float2 x_v = XZ(id.x, id.y);
-    float z = x_v.y;
     for (int m_prime = 0; m_prime < _N; m_prime++)
     {
         float2 k = K(id.x, m_prime);
-        float2 c = complexMul(_PostHorizontalDFT[uint3(id.x, m_prime,0)].xy, complex(z * k.y));
+        float2 c = complexMul(_PostHorizontalDFT[uint3(id.x, m_prime,0)].xy, complex(x_v.y * k.y));
         res_h += c;
 
-        res_n_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].xy, complex(z * k.y));
-        res_n_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].zw, complex(z * k.y)) * k.y;
+        res_n_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].xy, complex(x_v.y * k.y));
+        res_n_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 1)].zw, complex(x_v.y * k.y)) * k.y;
         
-        res_d_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].xy, complex(z * k.y));
-        if (length(k) > 0.9f)
+        res_d_x += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].xy, complex(x_v.y * k.y));
+        if (length(k) > 0.99f)
         {
-            res_d_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].zw, complex(z * k.y)) * k.y /length(k);
+            res_d_z += complexMul(_PostHorizontalDFT[uint3(id.x, m_prime, 2)].zw, complex(x_v.y * k.y)) * k.y /length(k);
         }
     }
 
