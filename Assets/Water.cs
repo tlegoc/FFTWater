@@ -4,26 +4,21 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 using Random = UnityEngine.Random;
 
 [ExecuteInEditMode]
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class Water : MonoBehaviour
 {
-    public ComputeShader waterFFT;
+    [FormerlySerializedAs("waterFFT")] public ComputeShader waterCompute;
+    [FormerlySerializedAs("FFT")] public ComputeShader FFTCompute;
     public Shader waterShader;
 
     [Header("Plane body parameter")] public float size = 100f;
 
-    public int gridSizePowerOfTwo = 8;
-
-    private int _N;
-
-    private float L
-    {
-        get { return size; }
-    }
-
+    private int _N = 1024;
+    
     [Header("Phillips parameters")] [Tooltip("Wind direction")]
     public Vector2 _w;
 
@@ -35,25 +30,12 @@ public class Water : MonoBehaviour
     public Texture2D noiseTexture;
     [Tooltip("Controls noise generation")] public int seed = 0;
 
-    private RenderTexture _noiseTextureInternal,
-        _h0Spectrum,
-        _Spectrum,
-        _Heightmap,
-        _PostHorizontalDFT,
-        _Normals,
-        _Displacement;
+    private RenderTexture _noiseTextureInternal;
 
     private Material _waterMaterial;
 
     private bool _isInitialized = false;
-
-
-    public void CalcN()
-    {
-        if (gridSizePowerOfTwo < 3) gridSizePowerOfTwo = 3;
-        
-        _N = 1 << gridSizePowerOfTwo;
-    }
+    
     // Helpers
     public void NewSeed()
     {
@@ -62,12 +44,11 @@ public class Water : MonoBehaviour
 
     public void GenerateNoiseTexture()
     {
-        CalcN();
         _noiseTextureInternal = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
 
-        waterFFT.SetTexture(0, "_noiseTextureInternal", _noiseTextureInternal);
-        waterFFT.SetFloat("_Seed", seed);
-        waterFFT.Dispatch(0, _N/8, _N/8, 1);
+        // Create tex
+        waterCompute.SetInt("_Seed", seed);
+        waterCompute.SetTexture(0, "", _noiseTextureInternal);
         
         // Copy data to noiseTexture
         noiseTexture = new Texture2D(_N, _N, TextureFormat.RGBAFloat, false);
@@ -116,20 +97,6 @@ public class Water : MonoBehaviour
             Debug.Log("You must specify a noise texture or recreate one.");
             return;
         }
-        
-        CalcN();
-        
-        _h0Spectrum = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
-
-        _Spectrum = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, true);
-
-        _Heightmap = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RFloat, true);
-
-        _PostHorizontalDFT = CreateRenderTex(_N, _N, 3, RenderTextureFormat.ARGBFloat, true);
-
-        _Normals = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, true);
-        
-        _Displacement = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, true);
 
         Mesh m = new Mesh();
         m.name = "Water Grid";
@@ -175,38 +142,10 @@ public class Water : MonoBehaviour
 
         _waterMaterial = new Material(waterShader);
         GetComponent<MeshRenderer>().material = _waterMaterial;
-
-        // CS_Computeh0Spectrum
-        SetComputeParameters(1);
-        waterFFT.SetTexture(1, "_noiseTexture", noiseTexture);
-        waterFFT.Dispatch(1, _N/8, _N/8, 1);
-
-        _isInitialized = true;
-        SetShaderParameter();
-    }
-
-    void SetComputeParameters(int kernel = 0)
-    {
-        waterFFT.SetInt("_N", _N);
-        waterFFT.SetFloat("_L", L);
-        waterFFT.SetVector("_w", _w);
-        waterFFT.SetFloat("_V", _V);
-        waterFFT.SetFloat("_A", _A);
-        waterFFT.SetFloat("_t", Time.time);
-        waterFFT.SetFloat("_Seed", seed);
-        waterFFT.SetTexture(kernel, "_h0spectrum", _h0Spectrum);
-        waterFFT.SetTexture(kernel, "_Spectrum", _Spectrum);
-        waterFFT.SetTexture(kernel, "_Heightmap", _Heightmap);
-        waterFFT.SetTexture(kernel, "_Normals", _Normals);
-        waterFFT.SetTexture(kernel, "_PostHorizontalDFT", _PostHorizontalDFT);
-        waterFFT.SetTexture(kernel, "_Displacement", _Displacement);
     }
 
     void SetShaderParameter()
     {
-        _waterMaterial.SetTexture("_Heightmap", _Heightmap);
-        _waterMaterial.SetTexture("_Normals", _Normals);
-        _waterMaterial.SetTexture("_Displacement", _Displacement);
         _waterMaterial.SetFloat("_AmplitudeMult", AmplitudeOverride);
     }
 
@@ -233,15 +172,6 @@ public class Water : MonoBehaviour
         Debug.Log("Image saved to " + Application.dataPath + "/../" + name + ".png");
     }
 
-    public void SaveAllTextures()
-    {
-        SaveTexture(_noiseTextureInternal, "noise");
-        SaveTexture(_h0Spectrum, "h0spectrum");
-        SaveTexture(_Spectrum, "spectrum");
-        SaveTexture(_Heightmap, "heightmap");
-        SaveTexture(_PostHorizontalDFT, "posthoriz");
-    }
-
     #endregion
 
     // Update is called once per frame
@@ -249,31 +179,17 @@ public class Water : MonoBehaviour
     {
         if (!_isInitialized) return;
 
-        // CS_Computehtilde
-        SetComputeParameters(2);
-        waterFFT.Dispatch(2, _N/8, _N/8, 1);
-
-        // CS_HorizontalDFT
-        SetComputeParameters(3);
-        waterFFT.Dispatch(3, _N/8, _N/8, 1);
-        // CS_VerticalDFT
-        SetComputeParameters(4);
-        waterFFT.Dispatch(4, _N/8, _N/8, 1);
+        
     }
 
     public void CleanupTextures()
     {
 #if UNITY_EDITOR
-        DestroyImmediate(_h0Spectrum);
-        DestroyImmediate(_Spectrum);
-        DestroyImmediate(_Heightmap);
-        DestroyImmediate(_PostHorizontalDFT);
-        DestroyImmediate(_Normals);
-        DestroyImmediate(_Displacement);
+        DestroyImmediate(_noiseTextureInternal);
 #else
-        Destroy(_noiseTexture);
+        Destroy(_noiseTextureInternal);
         Destroy(_h0Spectrum);
-        Destroy(_Spectrum);
+        Destroy(_hTildeResult);
         Destroy(_Heightmap);
         Destroy(_PostHorizontalDFT);
         Destroy(_Normals);
