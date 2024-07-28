@@ -1,4 +1,6 @@
 #pragma kernel CS_ComputeNoiseTexture
+#pragma kernel CS_ComputeHT0
+#pragma kernel CS_PrepareForFFT
 
 #define PI 3.1415926535897932384626433f
 #define G 9.81f
@@ -7,7 +9,19 @@
 
 // Noise map gen
 int _Seed;
+RWTexture2D<float4> _noiseTextureInternal;
 
+// Ocean
+float _L;
+int _N;
+
+// Phillips parameters
+float2 _W;
+float _A;
+float _WavePower;
+
+RWTexture2D<float4> _HT0;
+Texture2D<float4> _noiseTexture;
 
 //
 //
@@ -31,8 +45,55 @@ float2 UniformToGaussian(float u1, float u2)
 [numthreads(8, 8, 1)]
 void CS_ComputeNoiseTexture(uint3 id : SV_DispatchThreadID)
 {
-    float4 samples = float4(hash(_Seed + id.y + id.x * LENGTH + LENGTH), hash(2 * (_Seed + id.y + id.x * LENGTH + LENGTH)),
-                            hash(3 * (_Seed + id.y + id.x * LENGTH + LENGTH)), hash(4 * (_Seed + id.y + id.x * LENGTH + LENGTH)));
+    float4 samples = float4(hash(_Seed + id.y + id.x * LENGTH + LENGTH),
+                            hash(2 * (_Seed + id.y + id.x * LENGTH + LENGTH)),
+                            hash(3 * (_Seed + id.y + id.x * LENGTH + LENGTH)),
+                            hash(4 * (_Seed + id.y + id.x * LENGTH + LENGTH)));
     _noiseTextureInternal[id.xy] = float4(UniformToGaussian(samples.x, samples.y),
                                           UniformToGaussian(samples.z, samples.w));
+}
+
+// Ocean
+
+float2 KFromThreadID(uint3 id)
+{
+    float deltaK = 2.0 * PI / _L;
+    float nx = (float)id.x - (float)_N / 2.0;
+    float nz = (float)id.y - (float)_N / 2.0;
+    return float2(nx, nz) * deltaK;
+}
+
+float Phillips(float2 k)
+{
+    const float k_ = length(k);
+    if (k_ < 0.000001f) return 0.0f;
+
+    const float L = pow(length(_W), 2.0f) / G;
+    const float k_2 = k_ * k_;
+    const float k_L_2 = k_2 * L * L;
+    const float k_4 = k_2 * k_2;
+
+    return _A * exp(-1.0f / k_L_2) / k_4 * pow(dot(normalize(k), normalize(_W)), _WavePower);
+}
+
+float2 Conjugate(float2 x)
+{
+    return float2(x.x, -x.y);
+}
+
+[numthreads(8, 8, 1)]
+void CS_ComputeHT0(uint3 id : SV_DispatchThreadID)
+{
+    float2 k = KFromThreadID(id);
+
+    float p1 = Phillips(k);
+    float p2 = Phillips(-k);
+
+    _HT0[id.xy] = float4(_noiseTexture[id.xy].rg * p1, Conjugate(_noiseTexture[id.xy].ba * p2));
+}
+
+[numthreads(8, 8, 1)]
+void CS_PrepareForFFT(uint3 id : SV_DispatchThreadID)
+{
+    
 }
