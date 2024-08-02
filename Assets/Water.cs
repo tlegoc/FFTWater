@@ -34,6 +34,9 @@ public class Water : MonoBehaviour
     private RenderTexture _noiseTextureInternal;
 
     private RenderTexture _HT0;
+    private RenderTexture _HT;
+    private RenderTexture _FFTFirstPass;
+    private RenderTexture _Heightmap;
 
     private Material _waterMaterial;
 
@@ -161,6 +164,12 @@ public class Water : MonoBehaviour
         waterCompute.SetTexture(1, "_HT0", _HT0);
         
         waterCompute.Dispatch(1, _N/8, _N/8, 1);
+
+        _HT = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false);
+
+        _FFTFirstPass = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false);
+
+        _Heightmap = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false);
     }
 
     public void Init()
@@ -175,11 +184,14 @@ public class Water : MonoBehaviour
         InitOceanData();
 
         _isInitialized = true;
+
+        SetShaderParameter();
     }
 
     void SetShaderParameter()
     {
         _waterMaterial.SetFloat("_AmplitudeMult", AmplitudeOverride);
+        _waterMaterial.SetTexture("_Heightmap", _HT);
     }
 
 
@@ -212,9 +224,30 @@ public class Water : MonoBehaviour
     {
         if (!_isInitialized) return;
 
-        // Compute htilde
+        // Compute HT
+        waterCompute.SetFloat("time", Time.time);
+        waterCompute.SetTexture(2, "_HT0", _HT0);
+        waterCompute.SetTexture(2, "_HT", _HT);
+        
+        waterCompute.Dispatch(2, _N/8, _N/8, 1);
 
         // FFT
+        // First FFT for heightmap
+        /*
+        FFTCompute.SetTexture(0, "TextureSource", _HT);
+        FFTCompute.SetTexture(0, "TextureTarget", _FFTFirstPass);
+        
+        FFTCompute.Dispatch(0, 1, _N, 1);
+        
+        FFTCompute.SetTexture(1, "TextureSource", _FFTFirstPass);
+        FFTCompute.SetTexture(1, "TextureTarget", _Heightmap);
+        
+        FFTCompute.Dispatch(1, 1, _N, 1);*/
+        
+        waterCompute.SetTexture(3, "_FourierTarget", _HT);
+        waterCompute.Dispatch(3, 1, _N, 1);
+        waterCompute.SetTexture(4, "_FourierTarget", _HT);
+        waterCompute.Dispatch(4, 1, _N, 1);
     }
 
     public void CleanupTextures()

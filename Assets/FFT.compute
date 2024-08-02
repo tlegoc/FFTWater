@@ -20,10 +20,10 @@
 // ROWPASS: defined for tranformation along the x axis
 // LENGTH: pixel length of row or column
 
-#pragma kernel ButterflySLM
-#pragma kernel ButterflySLM ROWPASS
+#pragma kernel ButterflySLM TRANSFORM_INVERSE
+#pragma kernel ButterflySLM TRANSFORM_INVERSE ROWPASS
 
-#define BUTTERFLY_COUNT 8
+#define BUTTERFLY_COUNT 10
 #define LENGTH 1024
 
 Texture2D<float2> TextureSource;
