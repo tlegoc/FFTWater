@@ -1,8 +1,8 @@
 #pragma kernel CS_ComputeNoiseTexture
 #pragma kernel CS_ComputeHT0
 #pragma kernel CS_PrepareForFFT
-#pragma kernel CS_HorizontalFFT
-#pragma kernel CS_VerticalFFT
+#pragma kernel CS_Permute
+#pragma kernel CS_FinalPass
 
 #define PI 3.1415926535897932384626433f
 #define G 9.81f
@@ -26,8 +26,20 @@ RWTexture2D<float4> _HT0;
 Texture2D<float4> _noiseTexture;
 
 // Prepare For FFT
-RWTexture2D<float4> _HT;
+RWTexture2D<float2> _HT;
+RWTexture2D<float2> _HTSlopeX;
+RWTexture2D<float2> _HTSlopeZ;
+RWTexture2D<float2> _HTDx;
+RWTexture2D<float2> _HTDz;
 float time;
+
+// Permute
+RWTexture2D<float2> _permute;
+
+// Final pass (we also reuse the same input as Prepare for FFT
+RWTexture2D<float4> _Displacement;
+RWTexture2D<float4> _Normals;
+
 
 //
 //
@@ -117,63 +129,41 @@ float Dispersion(float k)
 void CS_PrepareForFFT(uint3 id : SV_DispatchThreadID)
 {
     float2 k = KFromThreadID(id);
+    float klen = length(k);
     float omegat = Dispersion(length(k)) * time;
 
-    _HT[id.xy] = float4(ComplexMul(_HT0[id.xy].rg, Complex(omegat)) + ComplexMul(_HT0[id.xy].ba, Complex(-omegat)), 0,
-                        0);
-}
+    _HT[id.xy] = float2(ComplexMul(_HT0[id.xy].rg, Complex(omegat)) + ComplexMul(_HT0[id.xy].ba, Complex(-omegat)));
+    _HTSlopeX[id.xy] = ComplexMul(float2(0, k.x), _HT[id.xy]);
+    _HTSlopeZ[id.xy] = ComplexMul(float2(0, k.y), _HT[id.xy]);
 
-#define LOG_LENGTH 10
-
-RWTexture2D<float4> _FourierTarget;
-
-groupshared float4 fftGroupBuffer[2][LENGTH];
-
-void ButterflyValues(uint step, uint index, out uint2 indices, out float2 twiddle)
-{
-    const float twoPi = 6.28318530718;
-    uint b = LENGTH >> (step + 1);
-    uint w = b * (index / b);
-    uint i = (w + index) % LENGTH;
-    sincos(-twoPi / LENGTH * w, twiddle.y, twiddle.x);
-
-    //This is what makes it the inverse FFT
-    twiddle.y = -twiddle.y;
-    indices = uint2(i, i + b);
-}
-
-float4 FFT(uint threadIndex, float4 input)
-{
-    fftGroupBuffer[0][threadIndex] = input;
-    GroupMemoryBarrierWithGroupSync();
-    bool flag = false;
-
-    [unroll]
-    for (uint step = 0; step < LOG_LENGTH; ++step)
+    if (klen < 0.000001f)
     {
-        uint2 inputsIndices;
-        float2 twiddle;
-        ButterflyValues(step, threadIndex, inputsIndices, twiddle);
-
-        float4 v = fftGroupBuffer[flag][inputsIndices.y];
-        fftGroupBuffer[!flag][threadIndex] = fftGroupBuffer[flag][inputsIndices.x] + float4(
-            ComplexMul(twiddle, v.xy), ComplexMul(twiddle, v.zw));
-
-        flag = !flag;
-        GroupMemoryBarrierWithGroupSync();
+        _HTDx[id.xy] = float2(0, 0);
+        _HTDz[id.xy] = float2(0, 0);
     }
-
-    return fftGroupBuffer[flag][threadIndex];
+    else
+    {
+        _HTDx[id.xy] = ComplexMul(_HT[id.xy], float2(0, -k.x / klen));
+        _HTDz[id.xy] = ComplexMul(_HT[id.xy], float2(0, -k.y / klen));
+    }
 }
 
-[numthreads(LENGTH, 1, 1)]
-void CS_HorizontalFFT(uint3 id : SV_DISPATCHTHREADID)
+float2 Permute(float2 data, float3 id)
 {
-    _FourierTarget[id.xy] = FFT(id.x, _FourierTarget[id.xy]);
+    return data * (1.0f - 2.0f * ((id.x + id.y) % 2));
 }
 
-[numthreads(LENGTH, 1, 1)]
-void CS_VerticalFFT(uint3 id : SV_DISPATCHTHREADID)
+[numthreads(8, 8, 1)]
+void CS_Permute(uint3 id : SV_DispatchThreadID)
 {
-    _FourierTarget[id.yx] = FFT(id.x, _FourierTarget[id.yx]);
+    _permute[id.xy] = Permute(_permute[id.xy], id);
+}
+
+[numthreads(8, 8, 1)]
+void CS_FinalPass(uint3 id : SV_DispatchThreadID)
+{
+    _Displacement[id.xy] = float4(_HTDx[id.xy].r * -1.0f, _HT[id.xy].x, _HTDz[id.xy].r * -1.0f, 0.0);
+    float3 n = float3(-_HTSlopeX[id.xy].x, 1.0f, -_HTSlopeZ[id.xy].x);
+    n = normalize(n);
+    _Normals[id.xy] = float4(n, 0.0f);
 }

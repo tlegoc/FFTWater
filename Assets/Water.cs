@@ -18,25 +18,33 @@ public class Water : MonoBehaviour
 
     [Header("Plane body parameter")] public float size = 100f;
 
+    // Resolution
     private int _N = 1024;
 
-    [Header("Phillips parameters")] [Tooltip("Wind direction and speed")]
+    [Header("Phillips parameters")] [Tooltip("Wind direction and speed.")]
     public Vector2 _w;
 
     [Tooltip("Phillips parameter")] public float _A = 1.8e-05f;
+
+    [Tooltip("Accentuate the directionality of the waves.")]
     public float _WavePower = 6.0f;
 
-    [Header("Additionnal parameters")] public float AmplitudeOverride = 1f;
+    [Header("Additionnal parameters")] [Tooltip("Multiply the displacement in the vertex shader.")]
+    public float AmplitudeOverride = 1f;
 
     public Texture2D noiseTexture;
-    [Tooltip("Controls noise generation")] public int seed = 0;
+
+    [Tooltip("Controls noise generation. Should allow you to sync waves between clients.")]
+    public int seed = 0;
 
     private RenderTexture _noiseTextureInternal;
 
     private RenderTexture _HT0;
     private RenderTexture _HT;
     private RenderTexture _FFTFirstPass;
-    private RenderTexture _Heightmap;
+    private RenderTexture _HTSlopeX, _HTSlopeZ;
+    private RenderTexture _HTDx, _HTDz;
+    private RenderTexture _Displacement, _Normals;
 
     private Material _waterMaterial;
 
@@ -144,7 +152,6 @@ public class Water : MonoBehaviour
 
         m.triangles = triangles;
 
-        m.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = m;
 
         _waterMaterial = new Material(waterShader);
@@ -153,8 +160,17 @@ public class Water : MonoBehaviour
 
     void InitOceanData()
     {
-        _HT0 = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false);
+        _HT0 = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false, true);
+        _HT = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
+        _FFTFirstPass = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
+        _HTSlopeX = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
+        _HTSlopeZ = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
+        _HTDx = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
+        _HTDz = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
+        _Displacement = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false, true);
+        _Normals = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false, true);
 
+        // Initial spectrum computation
         waterCompute.SetTexture(1, "_noiseTexture", noiseTexture);
         waterCompute.SetFloat("_L", size);
         waterCompute.SetInt("_N", _N);
@@ -162,14 +178,8 @@ public class Water : MonoBehaviour
         waterCompute.SetFloat("_A", _A);
         waterCompute.SetFloat("_WavePower", _WavePower);
         waterCompute.SetTexture(1, "_HT0", _HT0);
-        
-        waterCompute.Dispatch(1, _N/8, _N/8, 1);
 
-        _HT = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false);
-
-        _FFTFirstPass = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false);
-
-        _Heightmap = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false);
+        waterCompute.Dispatch(1, _N / 8, _N / 8, 1);
     }
 
     public void Init()
@@ -191,33 +201,9 @@ public class Water : MonoBehaviour
     void SetShaderParameter()
     {
         _waterMaterial.SetFloat("_AmplitudeMult", AmplitudeOverride);
-        _waterMaterial.SetTexture("_Heightmap", _HT);
+        _waterMaterial.SetTexture("_Displacement", _Displacement);
+        _waterMaterial.SetTexture("_Normals", _Normals);
     }
-
-
-    // Used for debugging
-
-    #region DEBUG_FUNCTIONS
-
-    public void SaveTexture(RenderTexture tex, string path)
-    {
-        Texture2D t = new Texture2D(tex.width, tex.height, TextureFormat.RGBAFloat, false);
-
-        RenderTexture.active = tex;
-        t.ReadPixels(new Rect(0, 0, tex.width, tex.height), 0, 0);
-        t.Apply();
-
-        System.IO.File.WriteAllBytes(path, t.EncodeToPNG());
-        Debug.Log("Image saved to " + path);
-    }
-
-    public void SaveNoiseTexture(string path)
-    {
-        System.IO.File.WriteAllBytes(path, noiseTexture.EncodeToPNG());
-        Debug.Log("Image saved to " + path);
-    }
-
-    #endregion
 
     // Update is called once per frame
     void Update()
@@ -228,26 +214,73 @@ public class Water : MonoBehaviour
         waterCompute.SetFloat("time", Time.time);
         waterCompute.SetTexture(2, "_HT0", _HT0);
         waterCompute.SetTexture(2, "_HT", _HT);
-        
-        waterCompute.Dispatch(2, _N/8, _N/8, 1);
+        waterCompute.SetTexture(2, "_HTSlopeX", _HTSlopeX);
+        waterCompute.SetTexture(2, "_HTSlopeZ", _HTSlopeX);
+        waterCompute.SetTexture(2, "_HTDx", _HTDx);
+        waterCompute.SetTexture(2, "_HTDz", _HTDz);
+        waterCompute.Dispatch(2, _N / 8, _N / 8, 1);
 
-        // FFT
-        // First FFT for heightmap
-        /*
+        // FFT for each map
         FFTCompute.SetTexture(0, "TextureSource", _HT);
         FFTCompute.SetTexture(0, "TextureTarget", _FFTFirstPass);
-        
         FFTCompute.Dispatch(0, 1, _N, 1);
-        
         FFTCompute.SetTexture(1, "TextureSource", _FFTFirstPass);
-        FFTCompute.SetTexture(1, "TextureTarget", _Heightmap);
-        
-        FFTCompute.Dispatch(1, 1, _N, 1);*/
-        
-        waterCompute.SetTexture(3, "_FourierTarget", _HT);
-        waterCompute.Dispatch(3, 1, _N, 1);
-        waterCompute.SetTexture(4, "_FourierTarget", _HT);
-        waterCompute.Dispatch(4, 1, _N, 1);
+        FFTCompute.SetTexture(1, "TextureTarget", _HT);
+        FFTCompute.Dispatch(1, 1, _N, 1);
+
+        FFTCompute.SetTexture(0, "TextureSource", _HTSlopeX);
+        FFTCompute.SetTexture(0, "TextureTarget", _FFTFirstPass);
+        FFTCompute.Dispatch(0, 1, _N, 1);
+        FFTCompute.SetTexture(1, "TextureSource", _FFTFirstPass);
+        FFTCompute.SetTexture(1, "TextureTarget", _HTSlopeX);
+        FFTCompute.Dispatch(1, 1, _N, 1);
+
+        FFTCompute.SetTexture(0, "TextureSource", _HTSlopeZ);
+        FFTCompute.SetTexture(0, "TextureTarget", _FFTFirstPass);
+        FFTCompute.Dispatch(0, 1, _N, 1);
+        FFTCompute.SetTexture(1, "TextureSource", _FFTFirstPass);
+        FFTCompute.SetTexture(1, "TextureTarget", _HTSlopeZ);
+        FFTCompute.Dispatch(1, 1, _N, 1);
+
+        FFTCompute.SetTexture(0, "TextureSource", _HTDx);
+        FFTCompute.SetTexture(0, "TextureTarget", _FFTFirstPass);
+        FFTCompute.Dispatch(0, 1, _N, 1);
+        FFTCompute.SetTexture(1, "TextureSource", _FFTFirstPass);
+        FFTCompute.SetTexture(1, "TextureTarget", _HTDx);
+        FFTCompute.Dispatch(1, 1, _N, 1);
+
+        FFTCompute.SetTexture(0, "TextureSource", _HTDz);
+        FFTCompute.SetTexture(0, "TextureTarget", _FFTFirstPass);
+        FFTCompute.Dispatch(0, 1, _N, 1);
+        FFTCompute.SetTexture(1, "TextureSource", _FFTFirstPass);
+        FFTCompute.SetTexture(1, "TextureTarget", _HTDz);
+        FFTCompute.Dispatch(1, 1, _N, 1);
+
+        // Permute step (could be done directly in FFT)
+        waterCompute.SetTexture(3, "_permute", _HT);
+        waterCompute.Dispatch(3, _N / 8, _N / 8, 1);
+
+        waterCompute.SetTexture(3, "_permute", _HTSlopeX);
+        waterCompute.Dispatch(3, _N / 8, _N / 8, 1);
+
+        waterCompute.SetTexture(3, "_permute", _HTSlopeZ);
+        waterCompute.Dispatch(3, _N / 8, _N / 8, 1);
+
+        waterCompute.SetTexture(3, "_permute", _HTDx);
+        waterCompute.Dispatch(3, _N / 8, _N / 8, 1);
+
+        waterCompute.SetTexture(3, "_permute", _HTDz);
+        waterCompute.Dispatch(3, _N / 8, _N / 8, 1);
+
+        // Final computation
+        waterCompute.SetTexture(4, "_HT", _HT);
+        waterCompute.SetTexture(4, "_HTSlopeX", _HTSlopeX);
+        waterCompute.SetTexture(4, "_HTSlopeZ", _HTSlopeZ);
+        waterCompute.SetTexture(4, "_HTDx", _HTDx);
+        waterCompute.SetTexture(4, "_HTDz", _HTDz);
+        waterCompute.SetTexture(4, "_Displacement", _Displacement);
+        waterCompute.SetTexture(4, "_Normals", _Normals);
+        waterCompute.Dispatch(4, _N / 8, _N / 8, 1);
     }
 
     public void CleanupTextures()
@@ -255,9 +288,23 @@ public class Water : MonoBehaviour
 #if UNITY_EDITOR
         DestroyImmediate(_noiseTextureInternal);
         DestroyImmediate(_HT0);
+        DestroyImmediate(_HT);
+        DestroyImmediate(_HTSlopeX);
+        DestroyImmediate(_HTSlopeZ);
+        DestroyImmediate(_HTDx);
+        DestroyImmediate(_HTDz);
+        DestroyImmediate(_Displacement);
+        DestroyImmediate(_Normals);
 #else
         Destroy(_noiseTextureInternal);
         Destroy(_HT0);
+        Destroy(_HT);
+        Destroy(_HTSlopeX);
+        Destroy(_HTSlopeZ);
+        Destroy(_HTDx);
+        Destroy(_HTDz);
+        Destroy(_Displacement);
+        Destroy(_Normals);
 #endif
     }
 
@@ -320,20 +367,6 @@ public class WaterEditor : UnityEditor.Editor
             water.NewSeed();
             water.GenerateNoiseTexture();
             water.Init();
-        }
-
-        GUILayout.Label("Debug");
-
-        if (GUILayout.Button("Save noise texture"))
-        {
-            string path = EditorUtility.SaveFilePanel("Save noise texture", "", "noise", "png");
-            if (path != "") water.SaveNoiseTexture(path);
-        }
-
-        if (GUILayout.Button("Save HT0"))
-        {
-            string path = EditorUtility.SaveFilePanel("Save HT0 texture", "", "ht0", "png");
-            if (path != "") water.SaveTexture(water.GetHT0(), path);
         }
     }
 }
