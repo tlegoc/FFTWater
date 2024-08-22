@@ -11,6 +11,7 @@
 
 // Noise map gen
 int _Seed;
+// Output noise texture. Is later converted to a Texture2D
 RWTexture2D<float4> _noiseTextureInternal;
 
 // Ocean
@@ -91,7 +92,7 @@ float Phillips(float2 k)
     const float k_L_2 = k_2 * L * L;
     const float k_4 = k_2 * k_2;
 
-    return _A * exp(-1.0f / k_L_2) / k_4 * pow(abs(dot(k, normalize(_W))), _WavePower);
+    return _A * exp(-1.0f / k_L_2) / k_4 * pow(abs(dot(normalize(k), normalize(_W))), _WavePower);
 }
 
 float2 Conjugate(float2 x)
