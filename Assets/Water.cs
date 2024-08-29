@@ -215,7 +215,7 @@ public class Water : MonoBehaviour
         waterCompute.SetTexture(2, "_HT0", _HT0);
         waterCompute.SetTexture(2, "_HT", _HT);
         waterCompute.SetTexture(2, "_HTSlopeX", _HTSlopeX);
-        waterCompute.SetTexture(2, "_HTSlopeZ", _HTSlopeX);
+        waterCompute.SetTexture(2, "_HTSlopeZ", _HTSlopeZ);
         waterCompute.SetTexture(2, "_HTDx", _HTDx);
         waterCompute.SetTexture(2, "_HTDz", _HTDz);
         waterCompute.Dispatch(2, _N / 8, _N / 8, 1);

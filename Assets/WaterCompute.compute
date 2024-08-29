@@ -87,7 +87,7 @@ float Phillips(float2 k)
     const float k_ = length(k);
     if (k_ < 0.000001f) return 0.0f;
 
-    const float L = pow(length(_W), 2.0f) / G;
+    const float L = pow(length(_W), 2.0f) / -G;
     const float k_2 = k_ * k_;
     const float k_L_2 = k_2 * L * L;
     const float k_4 = k_2 * k_2;
@@ -134,8 +134,8 @@ void CS_PrepareForFFT(uint3 id : SV_DispatchThreadID)
     float omegat = Dispersion(length(k)) * time;
 
     _HT[id.xy] = float2(ComplexMul(_HT0[id.xy].rg, Complex(omegat)) + ComplexMul(_HT0[id.xy].ba, Complex(-omegat)));
-    _HTSlopeX[id.xy] = ComplexMul(float2(0, k.x), _HT[id.xy]);
-    _HTSlopeZ[id.xy] = ComplexMul(float2(0, k.y), _HT[id.xy]);
+    _HTSlopeX[id.xy] = ComplexMul(_HT[id.xy], float2(0, k.x));
+    _HTSlopeZ[id.xy] = ComplexMul(_HT[id.xy], float2(0, k.y));
 
     if (klen < 0.000001f)
     {
@@ -164,7 +164,7 @@ void CS_Permute(uint3 id : SV_DispatchThreadID)
 void CS_FinalPass(uint3 id : SV_DispatchThreadID)
 {
     _Displacement[id.xy] = float4(_HTDx[id.xy].r * -1.0f, _HT[id.xy].x, _HTDz[id.xy].r * -1.0f, 0.0);
-    float3 n = float3(-_HTSlopeX[id.xy].x, 1.0f, -_HTSlopeZ[id.xy].x);
+    float3 n = float3(0.0f -_HTSlopeX[id.xy].x, 1.0f, 0.0f -_HTSlopeZ[id.xy].x);
     n = normalize(n);
     _Normals[id.xy] = float4(n, 0.0f);
 }
