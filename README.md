@@ -1,8 +1,10 @@
 # FFTWater
 
-Ocean simulation using Jerry Tessendorf's algorithm. Phillips spectrum, then using intel's sligthly modified FFT algorithm.
+~~Ocean simulation using Jerry Tessendorf's algorithm. Phillips spectrum, then using intel's sligthly modified FFT algorithm.~~
 
 TODO : Phong shading instead of default URP with max metalness and smoothness.
+
+# Probably incorrect version
 
 ![image](https://github.com/user-attachments/assets/32d0f6d2-e6c0-4632-ab18-125a30f4faaf)
 
