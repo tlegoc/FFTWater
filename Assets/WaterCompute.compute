@@ -39,7 +39,7 @@ RWTexture2D<float2> _permute;
 
 // Final pass (we also reuse the same input as Prepare for FFT
 RWTexture2D<float4> _Displacement;
-RWTexture2D<float4> _Normals;
+RWTexture2D<float2> _Normals;
 
 
 //
@@ -82,16 +82,23 @@ float2 KFromThreadID(uint3 id)
     return float2(nx, nz) * deltaK;
 }
 
+float2 XFromThreadID(uint3 id)
+{
+    float nx = (float)id.x - (float)_N / 2.0;
+    float nz = (float)id.y - (float)_N / 2.0;
+    return float2(nx, nz);
+}
+
 float Phillips(float2 k)
 {
     const float k_ = length(k);
     if (k_ < 0.000001f) return 0.0f;
 
-    const float L = pow(length(_W), 2.0f) / -G;
+    const float L = pow(length(_W), 2.0f) / G;
     const float k_2 = k_ * k_;
     const float k_L_2 = k_2 * L * L;
     const float k_4 = k_2 * k_2;
-
+    
     return _A * exp(-1.0f / k_L_2) / k_4 * pow(abs(dot(normalize(k), normalize(_W))), _WavePower);
 }
 
@@ -105,8 +112,8 @@ void CS_ComputeHT0(uint3 id : SV_DispatchThreadID)
 {
     float2 k = KFromThreadID(id);
 
-    float p1 = Phillips(k);
-    float p2 = Phillips(-k);
+    float p1 = sqrt(Phillips(k)) / sqrt(2.0);
+    float p2 = sqrt(Phillips(-k)) / sqrt(2.0);
 
     _HT0[id.xy] = float4(_noiseTexture[id.xy].rg * p1, Conjugate(_noiseTexture[id.xy].ba * p2));
 }
@@ -133,9 +140,12 @@ void CS_PrepareForFFT(uint3 id : SV_DispatchThreadID)
     float klen = length(k);
     float omegat = Dispersion(length(k)) * time;
 
-    _HT[id.xy] = float2(ComplexMul(_HT0[id.xy].rg, Complex(omegat)) + ComplexMul(_HT0[id.xy].ba, Complex(-omegat)));
-    _HTSlopeX[id.xy] = ComplexMul(_HT[id.xy], float2(0, k.x));
-    _HTSlopeZ[id.xy] = ComplexMul(_HT[id.xy], float2(0, k.y));
+    float2 h0 = _HT0[id.xy].rg;
+    float2 h0conj = _HT0[id.xy].ba;
+
+    _HT[id.xy] = ComplexMul(h0, Complex(omegat)) + ComplexMul(h0conj, Complex(-omegat));
+    _HTSlopeX[id.xy] = ComplexMul(_HT[id.xy], float2(0, 1)) * k.x;
+    _HTSlopeZ[id.xy] = ComplexMul(_HT[id.xy], float2(0, 1)) * k.y;
 
     if (klen < 0.000001f)
     {
@@ -144,8 +154,8 @@ void CS_PrepareForFFT(uint3 id : SV_DispatchThreadID)
     }
     else
     {
-        _HTDx[id.xy] = ComplexMul(_HT[id.xy], float2(0, -k.x / klen));
-        _HTDz[id.xy] = ComplexMul(_HT[id.xy], float2(0, -k.y / klen));
+        _HTDx[id.xy] = _HTSlopeX[id.xy] / klen;
+        _HTDz[id.xy] = _HTSlopeZ[id.xy] / klen;
     }
 }
 
@@ -163,8 +173,6 @@ void CS_Permute(uint3 id : SV_DispatchThreadID)
 [numthreads(8, 8, 1)]
 void CS_FinalPass(uint3 id : SV_DispatchThreadID)
 {
-    _Displacement[id.xy] = float4(_HTDx[id.xy].r * -1.0f, _HT[id.xy].x, _HTDz[id.xy].r * -1.0f, 0.0);
-    float3 n = float3(0.0f -_HTSlopeX[id.xy].x, 1.0f, 0.0f -_HTSlopeZ[id.xy].x);
-    n = normalize(n);
-    _Normals[id.xy] = float4(n, 0.0f);
+    _Displacement[id.xy] = float4(_HTDx[id.xy].r, _HT[id.xy].x, _HTDz[id.xy].r, 0.0);
+    _Normals[id.xy] = float2(-_HTSlopeX[id.xy].x, -_HTSlopeZ[id.xy].x);
 }

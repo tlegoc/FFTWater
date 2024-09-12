@@ -168,7 +168,7 @@ public class Water : MonoBehaviour
         _HTDx = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
         _HTDz = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, true);
         _Displacement = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false, true);
-        _Normals = CreateRenderTex(_N, _N, 1, RenderTextureFormat.ARGBFloat, false, true);
+        _Normals = CreateRenderTex(_N, _N, 1, RenderTextureFormat.RGFloat, false, false);
 
         // Initial spectrum computation
         waterCompute.SetTexture(1, "_noiseTexture", noiseTexture);
