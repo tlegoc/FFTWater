@@ -1,6 +1,10 @@
+# NOTE
+
+This project doesn't yet work. I had previous results look "good" but they weren't correct. I am trying to finish it, but for some reason my maths are incorrect, and I can't find where, resulting in a heightmap that is technically correct yet its values are very low, resulting in no visible displacement. I taking a break on this project as of 12/09/2024, as I can't find the problem.
+
 # FFTWater
 
-~~Ocean simulation using Jerry Tessendorf's algorithm. Phillips spectrum, then using intel's sligthly modified FFT algorithm.~~
+WIP Ocean simulation using Jerry Tessendorf's algorithm. Phillips spectrum, then using intel's sligthly modified FFT algorithm.
 
 TODO : Phong shading instead of default URP with max metalness and smoothness.
 
